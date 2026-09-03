@@ -1,0 +1,8 @@
+.env
+.env.*
+!.env.example
+supabase/.temp/
+supabase/.branches/
+supabase/migrations/0002_cron.sql
+node_modules/
+.DS_Store

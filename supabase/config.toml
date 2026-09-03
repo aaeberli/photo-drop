@@ -1,0 +1,28 @@
+# Every function does its own authentication (shared access key -> our own
+# HS256 session JWT, or a cron/setup secret header). Supabase's gateway-level
+# JWT check has to be off, otherwise it would reject requests that carry our
+# token instead of a Supabase one — and Google's OAuth redirect, which carries
+# no Authorization header at all.
+
+project_id = "photo-drop"
+
+[functions.auth]
+verify_jwt = false
+
+[functions.upload-url]
+verify_jwt = false
+
+[functions.commit]
+verify_jwt = false
+
+[functions.photos]
+verify_jwt = false
+
+[functions.sync-to-google]
+verify_jwt = false
+
+[functions.google-oauth-start]
+verify_jwt = false
+
+[functions.google-oauth-callback]
+verify_jwt = false

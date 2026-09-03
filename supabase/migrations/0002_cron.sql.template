@@ -1,0 +1,41 @@
+-- Cron jobs. NOT applied automatically: it contains your project ref and cron
+-- secret, so copy it, fill in the two placeholders, and run it once in the
+-- Supabase SQL editor. Do not commit the filled-in version.
+--
+--   __PROJECT_REF__  e.g. abcdefghijklmnopqrst
+--   __CRON_SECRET__  the same value you set with `supabase secrets set CRON_SECRET=...`
+
+create extension if not exists pg_cron;
+create extension if not exists pg_net;
+
+-- Drop first so re-running this file is safe.
+select cron.unschedule('photo-drop-sync')  where exists (select 1 from cron.job where jobname = 'photo-drop-sync');
+select cron.unschedule('photo-drop-prune') where exists (select 1 from cron.job where jobname = 'photo-drop-prune');
+
+-- Every minute: push anything queued into the Google Photos album. /commit also
+-- kicks this directly, so this is the safety net for kicks that failed and for
+-- retrying photos that errored.
+select cron.schedule(
+  'photo-drop-sync',
+  '* * * * *',
+  $$
+  select net.http_post(
+    url     := 'https://__PROJECT_REF__.supabase.co/functions/v1/sync-to-google',
+    headers := jsonb_build_object(
+                 'content-type',   'application/json',
+                 'x-cron-secret',  '__CRON_SECRET__'
+               ),
+    body    := '{}'::jsonb,
+    timeout_milliseconds := 55000
+  );
+  $$
+);
+
+-- Nightly: trim the auth attempt log.
+select cron.schedule('photo-drop-prune', '17 3 * * *', $$select prune_auth_attempts();$$);
+
+-- Check what is scheduled:
+--   select jobname, schedule, active from cron.job;
+-- Check recent runs:
+--   select jobname, status, start_time, return_message
+--     from cron.job_run_details order by start_time desc limit 20;

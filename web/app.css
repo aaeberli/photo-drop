@@ -1,0 +1,175 @@
+:root {
+  color-scheme: dark;
+  --bg: #0d0f12;
+  --panel: #171a1f;
+  --panel-2: #1f242b;
+  --line: #2b323b;
+  --text: #eef1f5;
+  --muted: #9aa4b2;
+  --accent: #ff8a3d;
+  --accent-ink: #1a1105;
+  --ok: #4ade80;
+  --err: #f87171;
+  --radius: 14px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* ---------- upload page ---------- */
+
+.wrap {
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: max(1.25rem, env(safe-area-inset-top)) 1.25rem
+           max(1.25rem, env(safe-area-inset-bottom));
+}
+
+header h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+header p  { color: var(--muted); margin: 0 0 1.5rem; }
+
+.state { display: none; }
+.state[data-active] { display: block; }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+}
+
+.btn {
+  display: block;
+  width: 100%;
+  padding: 1rem;
+  font: inherit;
+  font-weight: 600;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--accent-ink);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn:active { transform: scale(.99); }
+.btn.secondary {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  font-weight: 500;
+}
+.btn + .btn { margin-top: .625rem; }
+.btn:disabled { opacity: .5; cursor: default; }
+
+input[type="file"] { display: none; }
+
+.hint { color: var(--muted); font-size: .875rem; margin: 1rem 0 0; text-align: center; }
+
+.summary {
+  margin: 1.25rem 0 0;
+  text-align: center;
+  font-size: .9rem;
+  font-weight: 600;
+}
+
+.queue { list-style: none; margin: 1rem 0 0; padding: 0; display: grid; gap: .625rem; }
+
+.item {
+  display: grid;
+  grid-template-columns: 3.25rem 1fr auto;
+  gap: .75rem;
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: .625rem;
+}
+.item .thumb {
+  width: 3.25rem; height: 3.25rem;
+  border-radius: 7px;
+  object-fit: cover;
+  background: var(--panel-2);
+  display: grid; place-items: center;
+  font-size: 1.25rem;
+}
+.item .meta { min-width: 0; }
+.item .name {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-size: .9rem;
+}
+.item .sub { color: var(--muted); font-size: .8rem; }
+.item .sub.err { color: var(--err); white-space: normal; }
+.item .tick { font-size: 1.1rem; }
+.item[data-status="done"] .tick { color: var(--ok); }
+.item[data-status="error"] .tick { color: var(--err); }
+
+.bar { height: 3px; background: var(--panel-2); border-radius: 2px; overflow: hidden; margin-top: .375rem; }
+.bar > span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+
+/* ---------- collage page ---------- */
+
+body.collage { overflow: hidden; height: 100vh; }
+
+.stage { position: fixed; inset: 0; background: #000; }
+
+.layer {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  gap: 6px;
+  padding: 6px;
+  opacity: 0;
+  transition: opacity 1.4s ease-in-out;
+}
+.layer.visible { opacity: 1; }
+
+.layer figure {
+  margin: 0;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #14171c;
+}
+.layer img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .layer { transition: none; }
+}
+
+.overlay {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  display: flex; gap: .75rem; align-items: center; justify-content: space-between;
+  padding: .75rem 1rem;
+  font-size: .8rem;
+  color: var(--muted);
+  background: linear-gradient(transparent, rgba(0, 0, 0, .75));
+  opacity: 0;
+  transition: opacity .3s;
+  pointer-events: none;
+}
+.stage:hover .overlay, .overlay.pinned { opacity: 1; pointer-events: auto; }
+.overlay button {
+  font: inherit; color: var(--text);
+  background: rgba(255, 255, 255, .1);
+  border: 1px solid rgba(255, 255, 255, .18);
+  border-radius: 8px; padding: .375rem .75rem; cursor: pointer;
+}
+
+.centered {
+  position: fixed; inset: 0;
+  display: grid; place-items: center;
+  padding: 2rem; text-align: center;
+}
+.centered p { max-width: 26rem; color: var(--muted); }

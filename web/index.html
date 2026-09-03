@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<!-- No third-party scripts anywhere: the session token lives in
+     sessionStorage, so locking the script origins down is what protects it. -->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none';
+               script-src 'self';
+               style-src 'self';
+               img-src 'self' blob: data:;
+               connect-src https://*.supabase.co;
+               base-uri 'none';
+               form-action 'none'">
+<title>Add a photo</title>
+<link rel="stylesheet" href="app.css">
+<script src="config.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Add a photo</h1>
+    <p>Pick one or more photos and they go straight into the album.</p>
+  </header>
+
+  <section id="locked" class="state card">
+    <p id="lockedMessage">One moment…</p>
+  </section>
+
+  <section id="ready" class="state">
+    <label class="btn" for="cameraInput">Take a photo</label>
+    <label class="btn secondary" for="libraryInput">Choose from library</label>
+
+    <input id="cameraInput"  type="file" accept="image/*" capture="environment">
+    <input id="libraryInput" type="file" accept="image/*" multiple>
+
+    <p class="hint">JPEG, PNG, HEIC or WebP · up to 25&nbsp;MB each</p>
+
+    <p id="summary" class="summary" hidden></p>
+    <ul id="queue" class="queue"></ul>
+  </section>
+</div>
+
+<script type="module" src="upload.js"></script>
+</body>
+</html>

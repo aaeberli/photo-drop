@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none';
+               script-src 'self';
+               style-src 'self';
+               img-src 'self' data: https://*.supabase.co;
+               connect-src https://*.supabase.co;
+               base-uri 'none';
+               form-action 'none'">
+<title>Collage</title>
+<link rel="stylesheet" href="app.css">
+<script src="config.js"></script>
+</head>
+<body class="collage">
+<div class="stage" id="stage">
+  <div class="layer" id="layerA"></div>
+  <div class="layer" id="layerB"></div>
+
+  <div class="centered" id="message">
+    <p id="messageText">Loading the album…</p>
+  </div>
+
+  <div class="overlay" id="overlay">
+    <span id="status"></span>
+    <span>
+      <button id="shuffleBtn" type="button">Shuffle now</button>
+      <button id="fullscreenBtn" type="button">Fullscreen</button>
+    </span>
+  </div>
+</div>
+
+<script type="module" src="collage.js"></script>
+</body>
+</html>

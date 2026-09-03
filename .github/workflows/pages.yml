@@ -1,0 +1,48 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only the newest deploy matters; cancel an in-flight one.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Publishes only web/, so the supabase/ sources and scripts stay off the
+      # public site.
+      - name: Inject the functions URL
+        env:
+          FUNCTIONS_URL: ${{ vars.SUPABASE_FUNCTIONS_URL }}
+        run: |
+          if [ -z "$FUNCTIONS_URL" ]; then
+            echo "::error::Repository variable SUPABASE_FUNCTIONS_URL is not set."
+            echo "Set it to https://<project-ref>.supabase.co/functions/v1 under"
+            echo "Settings -> Secrets and variables -> Actions -> Variables."
+            exit 1
+          fi
+          sed -i "s|https://YOUR_PROJECT_REF.supabase.co/functions/v1|$FUNCTIONS_URL|" web/config.js
+          touch web/.nojekyll
+          grep functionsUrl web/config.js
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+      - id: deployment
+        uses: actions/deploy-pages@v4
