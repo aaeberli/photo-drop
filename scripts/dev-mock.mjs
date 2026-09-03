@@ -236,7 +236,10 @@ createServer(async (req, res) => {
     }
     if (url.searchParams.get("seed") !== null) {
       photos.length = 0;
-      seedCount = Number(url.searchParams.get("seed")) || SEED_PHOTOS;
+      // `?seed=2` is the regression case: fewer photos than any mosaic template
+      // has tiles, which used to spin selectPhotos forever and freeze the tab.
+      seedCount = Number(url.searchParams.get("seed"));
+      if (!Number.isFinite(seedCount) || seedCount < 0) seedCount = SEED_PHOTOS;
       seedPhotos();
       console.log(`  mock-control  seeded ${photos.length}`);
     }

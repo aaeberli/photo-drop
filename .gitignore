@@ -3,6 +3,6 @@
 !.env.example
 supabase/.temp/
 supabase/.branches/
-supabase/migrations/0002_cron.sql
+supabase/migrations/20260830120100_cron.sql
 node_modules/
 .DS_Store

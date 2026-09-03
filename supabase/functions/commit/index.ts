@@ -81,6 +81,9 @@ Deno.serve(async (req) => {
       display_bytes: display ? display.size : null,
 
       caption: (body.caption ?? "").slice(0, 500) || null,
+      // Which share link this came in on, so revoking a key can be traced to
+      // the photos it let in.
+      uploaded_by_key: session.keyId,
       uploader_ip: clientIp(req),
       status: "pending",
     })

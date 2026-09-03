@@ -2,9 +2,9 @@
 
 A static site on GitHub Pages. You hand one link to everybody; they open it on
 their phone and land straight on upload buttons, no sign-in step. Originals go
-to a private Google Photos album that only you can see, at full resolution with
-their EXIF intact. A second, owner-only link shows the album as a mosaic collage
-that reshuffles every minute.
+to a private Google Photos album only you can see, full resolution with their
+EXIF intact. A second, owner-only link shows the album as a mosaic collage that
+reshuffles every minute.
 
 ```
                      ┌─ display copy (1920px WebP) ─→ Supabase Storage ─→ collage
@@ -13,6 +13,23 @@ that reshuffles every minute.
                                                                  (then staging deleted)
 ```
 
+## This deployment
+
+| | |
+|---|---|
+| Supabase project ref | `dqpxdrvjomtxpdmbrlxi` |
+| Functions base URL | `https://dqpxdrvjomtxpdmbrlxi.supabase.co/functions/v1` |
+| Pages origin | `https://aaeberli.github.io` |
+| Pages site | `https://aaeberli.github.io/photo-drop` |
+| Repo | `aaeberli/photo-drop` (public) |
+| Google Photos album | `Photo Drop` |
+| Google OAuth publishing status | Testing + test user — see [Google Photos](#google-photos-and-the-verification-wall) |
+
+None of those are secrets. The project ref is in `config.js` on the public site
+by design; security rests entirely on the access key in the link.
+
+---
+
 ## Two links, different powers
 
 | | Link | Scope | Can |
@@ -20,18 +37,18 @@ that reshuffles every minute.
 | Guests | `/#k=…` | `upload` | Add photos. **Cannot open the collage.** |
 | You | `/collage.html#k=…` | `view` | Watch the collage. **Cannot upload.** |
 
-The split matters because the guest link is going to everybody, and from there
-into group chats. Upload-only means a guest who forwards it cannot show a
-stranger the whole album — the worst they can do is add a photo.
+The split matters because the guest link goes to everybody, and from there into
+group chats. Upload-only means a guest who forwards it cannot show a stranger
+the whole album — the worst they can do is add a photo.
 
 `scripts/make-key.mjs` mints both.
 
-## How the auth works, and why
+## How auth works, and why
 
 Each link carries a 160-bit access key in the URL **fragment**:
 
 ```
-https://you.github.io/photo-drop/#k=A7K3M-QP2XV-…
+https://aaeberli.github.io/photo-drop/#k=A7K3M-QP2XV-…
 ```
 
 A fragment is never transmitted to a server, so the key stays out of access
@@ -57,8 +74,8 @@ REST API.
 
 Giving up HttpOnly's XSS protection is the one real cost, so the pages
 compensate with a strict `Content-Security-Policy`: `script-src 'self'`, no
-third-party scripts anywhere. If you later add an analytics snippet or a font
-CDN, you are widening the only hole in this design.
+third-party scripts anywhere. **If you later add an analytics snippet or a font
+CDN, you are widening the only hole in this design.**
 
 **The key goes in `localStorage`, the token in `sessionStorage`.** Phones evict
 background tabs aggressively; a guest who reopens the page from their tab list
@@ -73,20 +90,17 @@ Each upload produces two files, and the browser makes the second one:
 
 **Original** — untouched, full resolution, full EXIF. Staged in a private
 Storage bucket purely as a retry buffer, mirrored to the Google Photos album,
-then the staged copy is deleted. After that the original exists only in your
-album.
+then the staged copy is deleted and `photos.original_path` set to null. After
+that the original exists only in your album.
 
-**Display copy** — re-encoded in the browser, capped at **1920px** on the long
-edge, **WebP** q0.80 (JPEG fallback if the browser cannot encode WebP).
-Permanent, and the only thing the collage renders. Typically 80–350 KB. See
-[Storage and the free tier](#storage-and-the-free-tier) for how those numbers
-were arrived at.
+**Display copy** — re-encoded in the browser, capped at 1920px on the long edge,
+WebP q0.80 (JPEG fallback if the browser cannot encode WebP). Permanent, and the
+only thing the collage renders. Typically 80–350 KB.
 
-Resizing happens on the phone rather than the server because Supabase edge
-functions run on Deno with no native image library — doing it server-side would
-mean shipping a WASM decoder, and none of the practical ones handle HEIC, which
-is exactly what an iPhone hands you. The phone already has decoders for whatever
-its own camera produces.
+Resizing happens on the phone because Supabase edge functions run on Deno with
+no native image library — server-side would mean shipping a WASM decoder, and
+none of the practical ones handle HEIC, which is exactly what an iPhone hands
+you. The phone already has decoders for whatever its own camera produces.
 
 Two useful side effects of going through a canvas: EXIF orientation is baked
 into the pixels, so a photo shot sideways is upright in the collage without the
@@ -95,8 +109,7 @@ living in Supabase carries no GPS**. Only the Google Photos original does.
 
 ### Why the collage does not read Google Photos
 
-It could, and an earlier cut of this did. Reading that API is worse in every
-way:
+It could, and an earlier cut of this did. Reading that API is worse in every way:
 
 | | Reading Google Photos | Reading Storage (chosen) |
 |---|---|---|
@@ -106,23 +119,18 @@ way:
 | Photo appears | After the Google mirror succeeds | Seconds after upload |
 | Google token lapses | Collage down | Collage fine, mirror falls behind |
 
-The caching row is the one that bites hardest in practice. A collage left
-running on a screen reshuffles 1,440 times a day; with rotating URLs every tile
-is a fresh download and you burn gigabytes of egress. With stable URLs each
-photo is fetched exactly once.
+The caching row bites hardest in practice. A collage left running on a screen
+reshuffles 1,440 times a day; with rotating URLs every tile is a fresh download
+and you burn gigabytes of egress. With stable URLs each photo is fetched once.
 
 So Google Photos here is **write-only**: the app requests no read scope at all,
 which also means a leaked token cannot enumerate your album.
 
 ## Storage and the free tier
 
-The Supabase free plan gives **1 GB file storage** and **5 GB egress per month**.
-Both matter here, and they push in different directions.
+Supabase free gives **1 GB file storage** and **5 GB egress per month**.
 
-### Sizing the display copy
-
-Measured on this project, from a 4032×3024 (12 MP) source, across three content
-difficulties:
+Measured on this project, from a 4032×3024 (12 MP) source:
 
 | content | source JPEG | JPEG 2560 q82 | JPEG 1920 q78 | **WebP 1920 q78** |
 |---|---|---|---|---|
@@ -130,43 +138,29 @@ difficulties:
 | typical scene | 1619 KB | 264 KB | 134 KB | **42 KB** |
 | busy — foliage, a crowd | 3246 KB | 660 KB | 352 KB | **233 KB** |
 
-Two conclusions drove the defaults:
+Two conclusions drove the defaults. **WebP, not JPEG**: at matched visual
+quality it is ~35% smaller on the hardest content and several times smaller on
+smooth content, at no quality cost. **1920, not 2560**: after the format,
+`maxEdge` dominates — 2560→1920 is a ~40% saving — and 1920 is not a compromise,
+because the largest mosaic tile spans 2 of 4 columns and is therefore exactly
+1920 CSS px wide on a 3840px 4K display. Only a high-dpr desktop monitor at desk
+distance wants more.
 
-**WebP, not JPEG.** At matched visual quality it is ~35% smaller on the hardest
-content and several times smaller on smooth content. There is no quality cost
-and every browser that can decode a phone photo can encode WebP, so this is free.
-`downscale.js` probes for encoder support once and falls back to JPEG.
+Those test images are synthetic and compress better than real photographs. Trust
+the ratios between columns; for real photos budget **80–350 KB, averaging
+~250 KB**, so 1 GB holds roughly **4,000 photos**.
 
-**1920, not 2560.** After the format, `maxEdge` dominates — 2560→1920 is a ~40%
-saving. And 1920 is not a compromise for most screens: the largest mosaic tile
-spans 2 of 4 columns, so it is exactly 1920 CSS px wide on a 3840px 4K display.
-A 1920 copy fills it pixel for pixel. Only a high-dpr desktop monitor at desk
-distance wants more, and that is the one case to raise `displayMaxEdge`.
-
-Caveat on the absolute numbers: those test images are synthetic and compress
-better than real photographs, which carry more true entropy. Trust the ratios
-between columns; for real photos budget **80–350 KB, averaging ~250 KB**. At
-that average, 1 GB holds roughly **4,000 photos** — versus about 1,200 under the
-original 2560/JPEG settings.
-
-### Egress is the constraint that bites first
-
-5 GB/month. One cold load of a 500-photo collage costs 500 × 250 KB ≈ 125 MB, so
-about **40 cold loads a month**. "Cold" means a browser that has not cached the
-photos: because `/photos` returns the same signed URL on every poll and the
-objects are served with `max-age=604800`, a collage left running all day fetches
-each photo exactly once, and reopening it in the same browser costs nothing.
-Running it on several different screens, or on a device that clears its cache,
-is what multiplies this.
-
-### Guard rail
+**Egress is the constraint that bites first.** One cold load of a 500-photo
+collage costs ~125 MB, so about 40 cold loads a month. "Cold" means a browser
+that has not cached the photos — because `/photos` returns the same signed URL
+on every poll and objects are served with `max-age=604800`, a collage left
+running all day fetches each photo once, and reopening it in the same browser
+costs nothing. Several screens, or a device that clears its cache, multiplies it.
 
 `upload-url` refuses new uploads once stored display data passes
 `DISPLAY_BUDGET_BYTES` (default 800 MB, leaving headroom under the 1 GB cap for
 originals in transit). Guests see "The album is full. Ask the organiser to make
-room." rather than a broken upload.
-
-To check where you stand:
+room." rather than a broken upload. Check where you stand:
 
 ```sql
 select * from storage_usage();
@@ -175,177 +169,470 @@ select * from storage_usage();
 ### The 7-day pause
 
 Free projects pause after 7 consecutive days without database activity, which
-would break both links until you unpause manually. The `pg_cron` job in step 3
+breaks both links until you unpause manually. The `pg_cron` job in setup step 5
 runs every minute and calls an edge function that queries the database, so it
 keeps the project alive as a side effect — 43,200 invocations a month, well
 inside the free 500,000. **If you remove that cron job, expect the project to
 pause.**
 
-## What you need to know before setting up
-
-Since 31 March 2025 the Library API only lets an app touch its own data.
-`photoslibrary.appendonly` permits appending only to an album the *app* created,
-so **the album is created via the API on first run — you cannot point this at an
-album you made in the Google Photos app.**
-
-And the one that will bite you: while your OAuth app's publishing status is
-**Testing** with an External user type, Google expires the refresh token after
-**7 days** and the mirror stops. You must publish the app to **Production**.
-Photos scopes are "sensitive", so publishing unverified is allowed — you get a
-"Google hasn't verified this app" screen on the single occasion you consent, and
-a 100-user cap that is irrelevant since you are the only person who authorises
-it. If the mirror lapses anyway, the collage keeps working; photos just queue up
-in the `uploads` bucket until you re-link.
-
 ---
 
-## Setup
+# Setup
 
-### 0. CLI and project
+Everything here is idempotent. Re-running any step is safe: the SQL uses
+`create … if not exists` / `create or replace` / `on conflict`, `secrets set` is
+an upsert, and `functions deploy` replaces in place.
 
-Install the CLI. On Windows, npm global works in practice; Supabase's own
-recommendation is Scoop, or a project devDependency run through `npx`:
+## 0. Tooling and account
 
 ```bash
 npm install -g supabase
 ```
 
+Supabase's own docs prefer Scoop or a project devDependency via `npx`, but the
+npm global install works on Windows — that is what this project was set up with
+(v2.116.0).
+
 ```bash
 supabase login
 ```
 
-Then **create the project in the dashboard first** — `link` attaches to an
-existing project, it does not create one. Copy its ref from the project URL or
-Settings → General.
-
-Two things that will stop you here:
-
-- **The free plan allows only 2 active projects** per organisation. If you
-  already have two, pause or delete one, or reuse an existing project.
-- `supabase link` failing with *"Your account does not have the necessary
-  privileges to access this endpoint"* means the ref is not in an organisation
-  your logged-in account belongs to. The API returns 403 rather than 404 so it
-  does not leak whether the project exists. Check what you can actually reach:
-
-  ```bash
-  supabase projects list
-  ```
-
-  If the project you want is missing, you are logged into the CLI as a different
-  Supabase identity than the one that owns it. A personal access token is
-  cleaner than re-running `supabase login`, because it does not depend on which
-  account your browser happens to be signed into.
-
-  Generate one at <https://supabase.com/dashboard/account/tokens> **while signed
-  in as the account that owns the project**, then either:
-
-  ```bash
-  supabase login --token sbp_xxxxxxxx
-  ```
-
-  which stores it and replaces whatever account was logged in before — or, to
-  keep two accounts usable side by side, set it per terminal session instead.
-  The environment variable takes precedence over the stored credential without
-  overwriting it:
-
-  ```bash
-  export SUPABASE_ACCESS_TOKEN=sbp_xxxxxxxx
-  ```
-
-  In PowerShell: `$env:SUPABASE_ACCESS_TOKEN = "sbp_xxxxxxxx"`. This only lasts
-  for that shell, so all the `supabase` commands below must run in the same one.
-
-  Confirm you are pointed at the right account before going further:
-
-  ```bash
-  supabase projects list
-  ```
-
-### 1. Supabase
+**If you have more than one Supabase account**, the CLI login is browser-driven
+and will silently grab whichever identity the browser is signed into. A personal
+access token from <https://supabase.com/dashboard/account/tokens> is
+deterministic:
 
 ```bash
-supabase link --project-ref <your-project-ref>
+supabase login --token sbp_xxxxxxxx
+```
+
+That replaces the stored account. To keep two usable side by side, set
+`SUPABASE_ACCESS_TOKEN` per shell instead — it overrides the stored credential
+without destroying it, but only inside that shell.
+
+Always confirm which account you are on before anything else:
+
+```bash
+supabase projects list
+```
+
+## 1. Create and link the project
+
+**Create the project in the dashboard first.** `link` attaches to an existing
+project; it does not create one. The free plan allows **2 active projects per
+organisation**, so if you already have two, pause one or create the project
+under a different account.
+
+```bash
+supabase link --project-ref dqpxdrvjomtxpdmbrlxi
+```
+
+If this fails with *"Your account does not have the necessary privileges to
+access this endpoint"*, the ref is not in an organisation your logged-in account
+belongs to. The API returns 403 rather than 404 so it does not leak whether the
+project exists. `supabase projects list` shows what you can actually reach; if
+the project is missing, you are logged in as the wrong identity.
+
+## 2. Apply the schema
+
+`supabase db push` needs a direct Postgres connection, which many corporate
+networks block. If it works, use it:
+
+```bash
 supabase db push
 ```
 
+**If it fails with `Connection terminated unexpectedly`, the network is the
+cause, not your password.** Firewalls commonly answer the TCP handshake on
+5432/6543 themselves — so the port looks open — then refuse to pass the Postgres
+protocol. The tell is that the server never replies to a Postgres `SSLRequest`,
+before any credential is sent. `--skip-pooler` does not help: direct connections
+(`db.<ref>.supabase.co`) are IPv6-only unless you buy the IPv4 add-on, and fail
+with an address-family error instead.
+
+Only `db push` needs Postgres. `link`, `secrets set` and `functions deploy` all
+go over `api.supabase.com:443`. So apply the schema in the dashboard SQL editor
+instead, from `supabase/sql/`, in order:
+
+| script | contents |
+|---|---|
+| `01_tables.sql` | 5 tables, indexes, RLS enabled, seeds `sync_state` |
+| `02_buckets.sql` | `uploads` + `display` buckets, both private |
+| `03_functions.sql` | `claim_pending_photos`, `storage_usage`, `prune_auth_attempts` |
+| `04_uploader_link.sql` | `photos.uploaded_by_key` → `access_keys` FK |
+| `99_verify.sql` | read-only check |
+
+`03` needs `01` first. `04` is only needed if `01` ran before that column
+existed; a fresh `01` includes it. If `02` errors on permissions, create the two
+buckets by hand in Storage → New bucket, both with "Public bucket" **off**.
+
+`99_verify.sql` should return 5 tables all `rls_enabled = true`, 2 buckets both
+`public = false`, 3 functions, 1 `sync_state` row.
+
+Two notes if you applied by hand:
+
+- The schema deliberately does **not** `create extension pgcrypto`.
+  `gen_random_uuid()` has been core Postgres since 13, and `create extension` is
+  exactly the kind of statement that fails on permissions in the SQL editor.
+- The migration history table lives in a schema that `db push` creates on its
+  first successful run. On a project that has never been pushed to, inserting a
+  history row fails with `relation "supabase_migrations.schema_migrations" does
+  not exist`. You can skip that bookkeeping — the migration is idempotent, so a
+  later `db push` re-applies it as a no-op. To record it anyway:
+
+  ```sql
+  create schema if not exists supabase_migrations;
+  create table if not exists supabase_migrations.schema_migrations (
+    version text not null primary key
+  );
+  alter table supabase_migrations.schema_migrations
+    add column if not exists statements text[];
+  alter table supabase_migrations.schema_migrations
+    add column if not exists name text;
+
+  insert into supabase_migrations.schema_migrations (version, name)
+  values ('20260830120000', 'init')
+  on conflict (version) do nothing;
+  ```
+
+## 3. Secrets
+
 ```bash
 cp .env.example .env
-# fill in the four generated secrets with: openssl rand -base64 32
+```
+
+Generate the four secrets. **`SETUP_SECRET` must be hex** — it travels in a
+querystring, where base64's `+` decodes to a space and the comparison silently
+fails with "unauthorised":
+
+```bash
+for k in SESSION_JWT_SECRET AUTH_KEY_PEPPER CRON_SECRET; do sed -i "s|^${k}=.*|${k}=$(openssl rand -base64 32)|" .env; done
+```
+
+```bash
+sed -i "s|^SETUP_SECRET=.*|SETUP_SECRET=$(openssl rand -hex 32)|" .env
+```
+
+Set `ALLOWED_ORIGINS` to your Pages **origin** — scheme and host only, no path,
+no trailing slash. Browsers send the origin, not the page URL:
+
+```bash
+sed -i "s|^ALLOWED_ORIGINS=.*|ALLOWED_ORIGINS=https://aaeberli.github.io|" .env
+```
+
+Check nothing is still blank, then push. **A blank value is pushed as an empty
+string, not skipped** — and an empty required secret kills the worker at boot
+with an opaque `WORKER_ERROR`, because `requireEnv` runs at module scope:
+
+```bash
+grep -c '=$' .env
+```
+
+Zero, then:
+
+```bash
 supabase secrets set --env-file .env
 ```
+
+`secrets set` is an **upsert**: names in the file are overwritten, names not in
+the file are left alone. Removing one needs `supabase secrets unset NAME`. The
+`SUPABASE_*` entries are platform-managed and reserved — `.env` must not contain
+them.
+
+To spot an accidentally-empty secret later, run `supabase secrets list` and look
+for this digest, which is SHA-256 of the empty string:
+
+```
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+```
+
+## 4. Deploy the functions
 
 ```bash
 supabase functions deploy auth upload-url commit photos sync-to-google google-oauth-start google-oauth-callback
 ```
 
-`ALLOWED_ORIGINS` must exactly match your Pages origin (`https://you.github.io`,
-no trailing slash, no path) or every browser request fails CORS.
+All seven are deployed with `verify_jwt = false` (see `supabase/config.toml`),
+because each authenticates itself — Supabase's gateway check would reject our
+own bearer tokens and Google's redirect, which carries no `Authorization` header
+at all.
 
-### 2. Google Cloud
-
-1. New project → **APIs & Services** → enable **Photos Library API**.
-2. **OAuth consent screen**: External. Add one scope:
-   `.../auth/photoslibrary.appendonly`
-3. **Publish app** → Production. Skip verification, accept the warning screen.
-   Do not leave it in Testing — see above.
-4. **Credentials** → OAuth client ID → **Web application**. Authorised redirect
-   URI, exactly:
-   ```
-   https://<project-ref>.supabase.co/functions/v1/google-oauth-callback
-   ```
-5. Put the client id and secret in `.env` and re-run `supabase secrets set`.
-
-Then, signed into the Google account that should own the album, open once in
-your own browser:
-
-```
-https://<project-ref>.supabase.co/functions/v1/google-oauth-start?setup_secret=<SETUP_SECRET>
-```
-
-Consent, and the callback page confirms the album was created.
-
-### 3. Cron
+Check what is live and at which version:
 
 ```bash
-cp supabase/migrations/0002_cron.sql.template /tmp/cron.sql
-# replace __PROJECT_REF__ and __CRON_SECRET__, then run it in the SQL editor
+supabase functions list
 ```
 
-`/commit` also kicks the mirror directly, so originals normally reach the album
-within seconds; cron is the retry safety net.
+## 5. Cron
 
-### 4. GitHub Pages
+Copy `supabase/migrations/20260830120100_cron.sql.template`, replace
+`__PROJECT_REF__` with `dqpxdrvjomtxpdmbrlxi` and `__CRON_SECRET__` with your
+value, and run it in the SQL editor. Safe to re-run — it unschedules first.
 
-1. Push this repo to GitHub.
-2. **Settings → Pages → Source: GitHub Actions**.
-3. **Settings → Secrets and variables → Actions → Variables** → new repository
-   variable `SUPABASE_FUNCTIONS_URL` =
-   `https://<project-ref>.supabase.co/functions/v1`.
+`/commit` also kicks `sync-to-google` directly, so originals normally reach the
+album within seconds; cron is the retry net, and the thing that keeps the free
+project from pausing.
 
-The workflow publishes only `web/`, so the function sources and scripts stay off
-the public site.
+```sql
+select jobname, schedule, active from cron.job;
+select jobname, status, start_time, return_message
+  from cron.job_run_details order by start_time desc limit 20;
+```
 
-### 5. Mint the two links
+## 6. Google Cloud
+
+Do all of this **signed in as the Google account whose Photos library should own
+the album** — check the top-right avatar. Wrong account here means redoing
+everything from step 3 of this list.
+
+The console was reorganised: "OAuth consent screen" is now **APIs & Services →
+Google Auth Platform**, split into Branding, Audience, Data Access and Clients.
+Scopes live under Data Access.
+
+| # | Step | Direct link |
+|---|---|---|
+| 1 | Create project | [projectcreate](https://console.cloud.google.com/projectcreate) |
+| 2 | Enable **Google Photos Library API** | [apis/library/photoslibrary.googleapis.com](https://console.cloud.google.com/apis/library/photoslibrary.googleapis.com) |
+| 3 | Auth Platform → Get started | [/auth/overview](https://console.cloud.google.com/auth/overview) |
+| 4 | Audience → publishing status + test users | [/auth/audience](https://console.cloud.google.com/auth/audience) |
+| 5 | Data Access → add the one scope | [/auth/scopes](https://console.cloud.google.com/auth/scopes) |
+| 6 | Clients → Create client | [/auth/clients](https://console.cloud.google.com/auth/clients) |
+
+Step 2 is listed as "**Google** Photos Library API" — searching "Photos Library
+API" may not surface it. Do **not** enable *Google Photos Picker API* instead;
+most current articles point there because it is Google's replacement for
+browsing a library, but it cannot write to an album.
+
+Step 3 values: app name, support email, Audience **External**, contact email.
+
+Step 5, paste exactly this and nothing else:
+
+```
+https://www.googleapis.com/auth/photoslibrary.appendonly
+```
+
+Step 6: Application type **Web application**, one authorised redirect URI,
+exactly:
+
+```
+https://dqpxdrvjomtxpdmbrlxi.supabase.co/functions/v1/google-oauth-callback
+```
+
+No trailing slash and no query string. Google's rules explicitly prohibit a
+*fragment*; query strings are not clearly documented either way, which is why
+the callback is its own function rather than `?action=callback` on a shared one.
+
+Copy the Client ID and Secret into `.env`, then re-run `supabase secrets set
+--env-file .env` and redeploy the two OAuth functions.
+
+### Google Photos and the verification wall
+
+Google's Photos authorization docs state plainly: *"If your application accesses
+the Google Photos APIs, it must pass the OAuth verification review."* Publishing
+to Production unverified is **not** enough here — you get a hard
+`Access blocked: … has not completed the Google verification process`, with no
+*Advanced → proceed* bypass.
+
+The route that works without a review queue: **publishing status Testing, with
+your own Google account added as a Test user** (step 4 above). Test users get a
+warning screen with an **Advanced → Go to photo-drop (unsafe)** bypass.
+
+The cost is documented and specific: *"a project with an OAuth consent screen
+configured for an external user type and a publishing status of 'Testing' is
+issued a refresh token expiring in 7 days"*. It keys on publishing status, not
+verification. So:
+
+- **A one-off event over a weekend** — the token outlives it. Non-issue.
+- **Ongoing use** — `sync-to-google` starts failing with `invalid_grant` after a
+  week. Uploads and the collage keep working and guests notice nothing, but
+  originals stop reaching the album and queue in the `uploads` bucket. Re-open
+  the `google-oauth-start` URL to fix. Nothing is lost: `claim_pending_photos`
+  retries anything still holding an `original_path`.
+
+To escape the weekly click you must complete verification (3–5 business days for
+sensitive scopes), which needs domain ownership of your homepage verified in
+Google Search Console, and a privacy policy at its own URL with real content.
+
+### Link the account
+
+```
+https://dqpxdrvjomtxpdmbrlxi.supabase.co/functions/v1/google-oauth-start?setup_secret=<SETUP_SECRET>
+```
+
+Open it and let Google redirect you. **Do not reload the callback URL** — the
+authorization code is single-use and the state is time-limited, so replaying it
+always fails. If you see "Invalid state", the page now names the cause; start a
+fresh flow from `google-oauth-start`.
+
+Success is a page headed "Google Photos linked" with an album id, and an empty
+album in Google Photos.
+
+## 7. GitHub Pages
 
 ```bash
-AUTH_KEY_PEPPER='<same value as the secret>' \
-PAGES_BASE_URL='https://you.github.io/photo-drop' \
-node scripts/make-key.mjs
+gh auth login --hostname github.com --web --scopes repo,workflow
 ```
 
-It prints both links once and the SQL to register them. Run the `insert` in the
-Supabase SQL editor.
+The `workflow` scope is not optional: pushing `.github/workflows/pages.yml`
+without it fails with "refusing to allow an OAuth App to create or update
+workflow".
 
-For handing the guest link round a room, a QR code beats reading it aloud — the
-script prints an `npx qrcode` one-liner for that.
+Then, on the repo:
+
+1. **Settings → Secrets and variables → Actions → Variables** → new repository
+   **variable** (not a secret — the workflow reads `vars.`):
+   ```
+   SUPABASE_FUNCTIONS_URL = https://dqpxdrvjomtxpdmbrlxi.supabase.co/functions/v1
+   ```
+2. **Settings → Pages → Source → GitHub Actions.** If this is left on "Deploy
+   from a branch", GitHub's built-in Jekyll build publishes the repo root and
+   **your site serves README.md instead of the app**, because `web/` is not the
+   root. The tell is a workflow run named "pages build and deployment" — that
+   one only runs when the source is a branch.
+3. **Actions → Deploy to GitHub Pages → Run workflow.** Changing the source does
+   not trigger a run.
+
+The workflow publishes only `web/`, so `supabase/` and `scripts/` stay off the
+public site, and it substitutes `SUPABASE_FUNCTIONS_URL` into `web/config.js`,
+replacing the `YOUR_PROJECT_REF` placeholder. It **deliberately fails** at the
+"Inject the functions URL" step if the variable is missing, rather than
+publishing a site whose backend URL is a placeholder.
+
+**Pages on a private repo requires GitHub Pro or above.** On a Free account the
+repo must be public — which is safe here by design: `web/` contains only the
+functions URL, and access keys are minted by `make-key.mjs`, printed once, and
+never touch the repo.
+
+## 8. Mint the links
+
+```bash
+AUTH_KEY_PEPPER=$(grep '^AUTH_KEY_PEPPER=' .env | cut -d= -f2-) PAGES_BASE_URL='https://aaeberli.github.io/photo-drop' node scripts/make-key.mjs
+```
+
+It prints the guest link, the owner link, and the `insert` to run in the SQL
+editor. **The keys are shown once** and stored nowhere — only their hashes go
+into the database.
+
+Access keys use a URL-safe alphabet with no `+`, `/` or `=`, so share links
+survive being pasted anywhere. For handing the guest link round a room, the
+script prints an `npx qrcode` one-liner.
 
 ---
 
-## Local development
+# Maintenance
 
-A mock backend stands in for Supabase and Google, and keeps your uploaded
-display copies in memory and serves them back — so you can watch a photo you
-just uploaded appear in the collage, which is the only real way to check that
+## Secrets: what each one does and what rotating it breaks
+
+| Secret | Used by | Rotate freely? | Effect of rotating |
+|---|---|---|---|
+| `SESSION_JWT_SECRET` | signs session tokens + OAuth `state` | yes | All live browser sessions invalidated; pages silently re-exchange their stored key, so guests notice nothing. **Do not rotate mid-OAuth-flow** — a `state` signed with the old value fails verification. |
+| `AUTH_KEY_PEPPER` | access-key hashing | **no** | **Invalidates every minted access key.** Every link stops working and must be re-minted and re-registered. Set once, at setup. |
+| `CRON_SECRET` | guards `sync-to-google` | yes | Must be updated in the cron job SQL at the same time, or the mirror stops running. |
+| `SETUP_SECRET` | guards `google-oauth-start` | yes | Only affects your own setup URL. Rotate after any setup session where it was exposed. Keep it **hex**. |
+| `GOOGLE_CLIENT_ID` / `_SECRET` | Google OAuth | with care | Existing refresh token becomes invalid; re-run `google-oauth-start`. |
+| `ALLOWED_ORIGINS` | CORS | when hosting changes | Wrong value makes every browser call fail. See the troubleshooting table — it looks like a network error, not a CORS error. |
+
+After changing any secret, **redeploy the affected functions**. Env is read at
+module load, so warm workers keep serving the old value:
+
+```bash
+supabase functions deploy auth upload-url commit photos sync-to-google
+```
+
+## Rotating an access key
+
+```sql
+-- revoke, keeping photo attribution intact
+update access_keys set revoked = true where label = 'guests';
+```
+
+Then mint a new one and register it. Live sessions keep working until their JWT
+expires — `SESSION_TTL_SECONDS`, default 12h. Shorten it if you want revocation
+to bite faster. Rotating `SESSION_JWT_SECRET` invalidates sessions immediately.
+
+Photos keep their `uploaded_by_key` link after revocation (`on delete set null`
+only fires on deletion, and you should revoke rather than delete):
+
+```sql
+select k.label, count(*) as photos, max(p.created_at) as latest
+  from photos p
+  left join access_keys k on k.id = p.uploaded_by_key
+ group by k.label order by photos desc;
+```
+
+## Re-linking Google Photos
+
+Needed when the refresh token dies — every 7 days while in Testing, or after you
+revoke the app at <https://myaccount.google.com/permissions>.
+
+Just re-open the `google-oauth-start` URL. The album id is remembered in
+`google_oauth`, so you rejoin the same album and the queue drains on the next
+cron tick.
+
+The album title is set **once**, on creation. `GOOGLE_ALBUM_TITLE` is ignored
+afterwards because `ensureAlbum` returns early when `album_id` is set. Rename in
+the Photos app instead — the app addresses the album by id. If you delete the
+album, force a new one:
+
+```sql
+update google_oauth set album_id = null, album_title = null;
+```
+
+Never create the album by hand: `appendonly` can only write to albums the app
+itself created.
+
+## Health checks
+
+```sql
+select * from storage_usage();
+select status, count(*) from photos group by status;
+select last_sync_run_at, last_sync_error from sync_state;
+select ip, count(*) from auth_attempts where ok = false
+  and at > now() - interval '1 day' group by ip order by 2 desc;
+```
+
+`photos.status` tracks only the Google mirror: `pending → syncing → synced`. The
+collage does not consult it — it lists rows with a `display_path`. So a photo can
+be live on the collage and not yet in the album, which is intended.
+
+Retry a photo that gave up after five attempts:
+
+```sql
+update photos set status = 'pending', attempts = 0, last_error = null
+ where status = 'failed';
+```
+
+---
+
+# Troubleshooting
+
+Symptoms in the order they tend to appear.
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `supabase link`: *"Your account does not have the necessary privileges"* | Project ref not in an org your logged-in account belongs to. 403 not 404, so it does not leak existence. | `supabase projects list`; log in as the right identity |
+| CLI refuses to prompt; *"set the env var correctly: SUPABASE_DB_PASSWORD"* | The CLI detects agent env vars (`CLAUDECODE`, `AI_AGENT`) and goes non-interactive. Not a TTY problem. | Add `--agent no`, or run in a plain terminal |
+| `db push`: `Connection terminated unexpectedly` | Network blocks Postgres. Firewall SYN-ACKs 5432/6543 then drops the protocol; server never answers `SSLRequest`. | Apply `supabase/sql/*` in the dashboard, or run from a hotspot |
+| `relation "supabase_migrations.schema_migrations" does not exist` | That schema is created by the first successful `db push`. | Skip it, or create the schema first (step 2) |
+| Function returns `{"code":"WORKER_ERROR"}` | A required secret is empty. `requireEnv` throws at module scope, so the worker dies before your request. | `supabase secrets list`, look for the empty-string digest `e3b0c442…` |
+| `google-oauth-start` → `unauthorised` | `SETUP_SECRET` mismatch. Base64 `+` decodes to a space in a querystring. | Percent-encode (`%2B`, `%2F`, `%3D`), or regenerate as hex |
+| Google: `Access blocked: … has not completed the Google verification process` | Publishing status is Testing and the account is not a Test user — or is Production and Photos requires verification. | Testing + add yourself as a Test user |
+| Callback → `Invalid state` | Reloading a stale callback URL. Codes are single-use, state is time-limited. | Start again from `google-oauth-start`; read the reason on the page |
+| Pages serves README.md | Pages source is "Deploy from a branch", so Jekyll publishes the repo root. | Source → GitHub Actions, then run the workflow |
+| Pages workflow fails at "Inject the functions URL" | `SUPABASE_FUNCTIONS_URL` repository **variable** missing. | Add it under Actions → Variables (variable, not secret) |
+| App loads, then *"Could not reach the server"* | Almost always CORS: `ALLOWED_ORIGINS` does not exactly match the Pages origin. A CORS block is indistinguishable from a network failure in JS. | Set origin only, no path or trailing slash; redeploy the functions |
+| Uploads fine, album stays empty | Mirror failing. | `select last_sync_error from sync_state` — `invalid_grant` means re-link Google |
+| Guest sees "The album is full" | `DISPLAY_BUDGET_BYTES` reached. | `select * from storage_usage();` and free space or raise the budget |
+| Everything dead after a quiet week | Free project paused after 7 days idle. | Unpause in the dashboard; check the cron job still exists |
+| Photo in album but not the collage | `display_path is null` — the browser had no decoder for that file. | Expected and rare; the uploader tells the guest at the time |
+
+---
+
+# Local development
+
+A mock backend stands in for Supabase and Google, and keeps uploaded display
+copies in memory and serves them back — so you can watch a photo you just
+uploaded appear in the collage, which is the only real way to check that
 downscaling, orientation baking and the two-PUT flow work.
 
 ```bash
@@ -356,46 +643,23 @@ node scripts/dev-mock.mjs
 - owner collage: <http://localhost:8787/collage.html#k=OWNER-KEY>
 - rejection path: <http://localhost:8787/#k=WRONG>
 - empty album: <http://localhost:8787/mock-control?clear>
+- storage-full guard: <http://localhost:8787/mock-control?full=1>
 
 It also widens the pages' CSP just enough to reach localhost, so the production
 policy in the HTML stays tight.
 
-## Operating notes
-
-- **Where a photo is.** `photos.status` tracks only the Google mirror:
-  `pending → syncing → synced`. On `synced` the staged original is deleted and
-  `original_path` goes null. The collage does not consult this at all — it lists
-  rows that have a `display_path`.
-- **`failed` rows** mean five mirror attempts were exhausted; `photos.last_error`
-  says why and the original is still sitting in the `uploads` bucket. Set the
-  row back to `pending` to retry.
-- **Nothing mirroring?** `select last_sync_error from sync_state`. An
-  `invalid_grant` there means the refresh token died — almost always the Testing
-  publishing status.
-- **A photo in the album but not the collage** has `display_path is null`: the
-  browser had no decoder for it, so no display copy was made. Rare, and the
-  uploader tells the guest ("Added (not shown in the collage)").
-- **Storage growth** is the display copies only, ~250 KB each on average. Check
-  it with `select * from storage_usage();` and see
-  [Storage and the free tier](#storage-and-the-free-tier). Uploads stop cleanly
-  at `DISPLAY_BUDGET_BYTES`; to make room, delete rows and their objects from the
-  `display` bucket — the originals in Google Photos are unaffected.
-- **Rotating a link** is one `insert` plus `update … set revoked = true`. Live
-  sessions keep working until their JWT expires (12h); shorten
-  `SESSION_TTL_SECONDS` if you want revocation to bite faster.
-
-## Layout
+# Layout
 
 ```
 web/                       static site published to Pages
   index.html  upload.js     guest upload page
   collage.html  collage.js  owner collage page
   auth.js                   fragment -> token exchange, per-role key storage
-  downscale.js              in-browser display copy
+  downscale.js              in-browser display copy (WebP, JPEG fallback)
   config.js                 functions URL (rewritten at deploy time) + tuning
 supabase/
-  migrations/0001_init.sql  schema, RLS, both buckets, claim function
-  migrations/0002_cron.sql.template
+  sql/                      paste-sized scripts for the dashboard SQL editor
+  migrations/               the same schema, for `db push`
   functions/_shared/        http/CORS, env, session JWT, db, Google client
   functions/auth            key -> session token
   functions/upload-url      signed direct-to-Storage URLs for both files

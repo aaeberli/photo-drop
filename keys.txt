@@ -1,0 +1,24 @@
+=== Guest link — give this one to everybody ==========================
+https://aaeberli.github.io/photo-drop/#k=WH4CP-XE209-W1D4R-1G2AD
+
+  Opens straight on the upload buttons, no sign-in step. Upload only:
+  it cannot open the collage.
+
+=== Owner link — the collage screen, keep this one ===================
+https://aaeberli.github.io/photo-drop/collage.html#k=WD6SX-RTPNN-0RMXV-W70HY
+
+  View only: it cannot upload.
+
+=== Register both (Supabase SQL editor) ==============================
+insert into access_keys (label, key_hash, scopes) values
+  ('guests', 'f916e773a789e8ad3e389cd92592e718ce3f2f0e7e335c79a2ed2b011d196e06', array['upload']),
+  ('owner collage', 'd763557c28451b37f7cecc597bbc26bdeb7c23010d8163f009ac276d968791a6', array['view']);
+
+=== Revoke later ====================================================
+update access_keys set revoked = true where key_hash = 'f916e773a789e8ad3e389cd92592e718ce3f2f0e7e335c79a2ed2b011d196e06';  -- guests
+update access_keys set revoked = true where key_hash = 'd763557c28451b37f7cecc597bbc26bdeb7c23010d8163f009ac276d968791a6';  -- owner
+
+The keys above are not stored anywhere. Copy the links now.
+
+Tip: for handing the guest link round a room, a QR code beats typing:
+  npx --yes qrcode -o guest.png "https://aaeberli.github.io/photo-drop/#k=WH4CP-XE209-W1D4R-1G2AD"

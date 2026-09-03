@@ -38,10 +38,30 @@ const TEMPLATES = {
   ],
 };
 
+/**
+ * Layouts for the first few photos. The smallest mosaic above needs 5 tiles, so
+ * without these an album with 2 photos would show them repeated four times over
+ * — which is what a new album looks like for its first few minutes. Each entry
+ * is [wide-ish, portrait-ish].
+ */
+const FEW = {
+  1: [["a"], ["a"]],
+  2: [["a b"], ["a", "b"]],
+  3: [["a a b", "a a c"], ["a", "b", "c"]],
+  4: [["a b", "c d"], ["a b", "c d"]],
+};
+
 function pickTemplate(available) {
   const { innerWidth: w, innerHeight: h } = window;
   const ratio = w / h;
-  const pool = ratio < 0.9
+  const portraitish = ratio < 0.9;
+
+  if (available > 0 && available < 5) {
+    const pair = FEW[available];
+    return portraitish ? pair[1] : pair[0];
+  }
+
+  const pool = portraitish
     ? TEMPLATES.portrait
     : ratio > 1.9 && w >= 1400
       ? [...TEMPLATES.wide, ...TEMPLATES.landscape]
@@ -72,28 +92,45 @@ function refillBag() {
   }
 }
 
+/**
+ * Picks distinct photos for one layout.
+ *
+ * Never asks for more than exist: with 2 photos and a 5-tile template, every
+ * draw after the second is a duplicate, and an earlier version looped forever
+ * refilling the bag — freezing the page on the main thread. `buildLayer` already
+ * cycles a short list across the tiles, so returning fewer than `count` is fine.
+ *
+ * The `guard` is belt-and-braces. A frozen tab is a far worse failure than a
+ * slightly repetitive collage, so this loop must be incapable of spinning.
+ */
 function selectPhotos(count) {
   const byId = new Map(photos.map((p) => [p.id, p]));
+  const target = Math.min(count, photos.length);
   const picked = [];
+  const pickedIds = new Set();
+
+  const take = (photo) => {
+    if (!photo || pickedIds.has(photo.id)) return;
+    picked.push(photo);
+    pickedIds.add(photo.id);
+  };
 
   // A photo uploaded in the last few minutes jumps the queue, so someone who
   // just took a picture sees it appear on the next reshuffle.
-  const fresh = photos
+  photos
     .filter((p) => p.createdAt && Date.now() - new Date(p.createdAt).getTime() < 5 * 60_000)
     .filter((p) => !shownIds.has(p.id))
-    .slice(0, Math.max(1, Math.floor(count / 3)));
-  picked.push(...fresh);
+    .slice(0, Math.max(1, Math.floor(target / 3)))
+    .forEach(take);
 
-  while (picked.length < count) {
+  let guard = photos.length * 2 + target + 8;
+  while (picked.length < target && guard-- > 0) {
     if (bag.length === 0) {
       refillBag();
       shownIds = new Set();
       if (bag.length === 0) break;
     }
-    const id = bag.pop();
-    if (picked.some((p) => p.id === id)) continue;
-    const photo = byId.get(id);
-    if (photo) picked.push(photo);
+    take(byId.get(bag.pop()));
   }
 
   for (const p of picked) shownIds.add(p.id);

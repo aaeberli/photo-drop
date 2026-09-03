@@ -3,8 +3,13 @@
 -- Every table has RLS enabled with NO policies: anon/authenticated clients get
 -- nothing, and only the service_role key (used exclusively inside edge
 -- functions) can read or write. Nothing here is ever exposed to the browser.
-
-create extension if not exists pgcrypto;
+--
+-- `supabase/sql/` holds the same statements split into paste-sized pieces, for
+-- when `db push` cannot reach Postgres. Change one, change the other.
+--
+-- No `create extension pgcrypto` here: gen_random_uuid() has been core Postgres
+-- since 13, and asking for the extension only adds a statement that can fail on
+-- permissions in the SQL editor.
 
 -- ---------------------------------------------------------------------------
 -- Access keys (the secret in the share link)
@@ -79,6 +84,9 @@ create table if not exists photos (
   signed_url            text,
   signed_url_expires_at timestamptz,
 
+  -- Which share link let this photo in. Kept on revocation rather than
+  -- cascading, so revoking a key never destroys photos.
+  uploaded_by_key       uuid references access_keys (id) on delete set null,
   uploader_ip           text,
   caption               text,
 
@@ -95,6 +103,7 @@ create table if not exists photos (
 );
 
 create index if not exists photos_status_created_idx on photos (status, created_at);
+create index if not exists photos_uploaded_by_key_idx on photos (uploaded_by_key);
 -- Drives the collage listing.
 create index if not exists photos_display_created_idx
   on photos (created_at desc) where display_path is not null;

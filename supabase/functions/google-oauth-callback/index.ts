@@ -20,8 +20,13 @@ Deno.serve(async (req) => {
   const error = url.searchParams.get("error");
   if (error) return page(400, "Consent denied", `Google returned: ${escapeHtml(error)}`);
 
-  if (!(await verifyState(url.searchParams.get("state")))) {
-    return page(400, "Invalid state", "Start again from google-oauth-start.");
+  const state = await verifyState(url.searchParams.get("state"));
+  if (!state.ok) {
+    return page(
+      400,
+      "Invalid state",
+      `${escapeHtml(state.reason)}<br><br>Then start again from google-oauth-start.`,
+    );
   }
 
   const code = url.searchParams.get("code");

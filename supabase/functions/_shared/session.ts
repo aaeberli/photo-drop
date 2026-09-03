@@ -58,7 +58,11 @@ export async function readSession(req: Request): Promise<Session | null> {
   }
 }
 
-export function hasScope(session: Session | null, scope: Scope): boolean {
+/**
+ * Type predicate, so callers get a non-null `session` after the guard and can
+ * reach `keyId` without an assertion.
+ */
+export function hasScope(session: Session | null, scope: Scope): session is Session {
   return !!session && session.scopes.includes(scope);
 }
 
