@@ -12,6 +12,9 @@ const els = {
   summary: document.getElementById("summary"),
   camera: document.getElementById("cameraInput"),
   library: document.getElementById("libraryInput"),
+  cameraBtn: document.getElementById("cameraBtn"),
+  libraryBtn: document.getElementById("libraryBtn"),
+  cameraFallback: document.getElementById("cameraFallback"),
 };
 
 const MAX_BYTES = 25 * 1024 * 1024;
@@ -45,6 +48,41 @@ try {
 
 els.camera.addEventListener("change", onPick);
 els.library.addEventListener("change", onPick);
+
+/**
+ * Opening the picker from JS rather than a <label for>. Label-driven activation
+ * of a hidden file input is unreliable on Android and in in-app WebViews, where
+ * tapping simply does nothing. `input.click()` inside a real user gesture is
+ * honoured everywhere.
+ *
+ * `capture` is only a hint, and a device with no camera app can leave the
+ * picker unopened with no error to catch. If focus never leaves the page after
+ * a camera tap, point the guest at the library button, which on Android
+ * normally offers the camera anyway.
+ */
+function openPicker(input, { isCamera = false } = {}) {
+  let opened = false;
+  const markOpened = () => { opened = true; };
+  addEventListener("blur", markOpened, { once: true });
+  document.addEventListener("visibilitychange", markOpened, { once: true });
+
+  try {
+    input.click();
+  } catch {
+    if (isCamera) els.cameraFallback.hidden = false;
+    return;
+  }
+
+  if (isCamera) {
+    setTimeout(() => {
+      removeEventListener("blur", markOpened);
+      if (!opened && els.camera.files.length === 0) els.cameraFallback.hidden = false;
+    }, 1500);
+  }
+}
+
+els.cameraBtn.addEventListener("click", () => openPicker(els.camera, { isCamera: true }));
+els.libraryBtn.addEventListener("click", () => openPicker(els.library));
 
 function onPick(event) {
   const files = [...event.target.files];

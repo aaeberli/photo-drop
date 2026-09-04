@@ -57,6 +57,7 @@ header p  { color: var(--muted); margin: 0 0 1.5rem; }
   background: var(--accent);
   color: var(--accent-ink);
   cursor: pointer;
+  text-align: center;
   -webkit-tap-highlight-color: transparent;
 }
 .btn:active { transform: scale(.99); }
@@ -69,7 +70,27 @@ header p  { color: var(--muted); margin: 0 0 1.5rem; }
 .btn + .btn { margin-top: .625rem; }
 .btn:disabled { opacity: .5; cursor: default; }
 
-input[type="file"] { display: none; }
+/*
+ * Visually hidden, but NOT `display: none`.
+ *
+ * Several Android browsers — and most in-app WebViews, which is how a link
+ * shared into a chat gets opened — refuse to open the file picker for an input
+ * that is not rendered. `display: none` there means tapping the button does
+ * nothing at all. This keeps the input in the layout and the accessibility
+ * tree while making it invisible.
+ */
+input[type="file"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  opacity: 0;
+}
 
 .hint { color: var(--muted); font-size: .875rem; margin: 1rem 0 0; text-align: center; }
 

@@ -30,13 +30,20 @@
   </section>
 
   <section id="ready" class="state">
-    <label class="btn" for="cameraInput">Take a photo</label>
-    <label class="btn secondary" for="libraryInput">Choose from library</label>
+    <!-- Buttons, not <label for>: label-driven activation of a hidden file
+         input is unreliable on Android and in in-app WebViews. upload.js calls
+         input.click() directly, which works everywhere. -->
+    <button class="btn" type="button" id="cameraBtn">Take a photo</button>
+    <button class="btn secondary" type="button" id="libraryBtn">Choose from library</button>
 
-    <input id="cameraInput"  type="file" accept="image/*" capture="environment">
-    <input id="libraryInput" type="file" accept="image/*" multiple>
+    <input id="cameraInput"  type="file" accept="image/*" capture="environment" tabindex="-1" aria-hidden="true">
+    <input id="libraryInput" type="file" accept="image/*" multiple tabindex="-1" aria-hidden="true">
 
     <p class="hint">JPEG, PNG, HEIC or WebP · up to 25&nbsp;MB each</p>
+    <p class="hint" id="cameraFallback" hidden>
+      Camera not available on this browser — use “Choose from library”, which
+      usually offers the camera too.
+    </p>
 
     <p id="summary" class="summary" hidden></p>
     <ul id="queue" class="queue"></ul>
