@@ -226,10 +226,19 @@ returns table (
   staged_bytes        bigint,
   avg_display_bytes   bigint
 )
-language sql
+language plpgsql
 security definer
 set search_path = public
-as $$
+as $usage$
+begin
+  -- Every SECURITY DEFINER function in `public` needs this. A REVOKE only
+  -- removes grants made by the current user, so if the grant came from another
+  -- role the revoke below is a silent no-op and grants cannot be relied on.
+  if current_user not in ('service_role', 'postgres') then
+    raise exception 'permission denied for storage_usage' using errcode = '42501';
+  end if;
+
+  return query
   select
     count(*),
     count(*) filter (where display_path is not null),
@@ -238,7 +247,8 @@ as $$
     coalesce(sum(original_bytes) filter (where original_path is not null), 0),
     coalesce(avg(display_bytes)::bigint, 0)
   from photos;
-$$;
+end;
+$usage$;
 
 -- ---------------------------------------------------------------------------
 -- Housekeeping: drop old auth attempts so the table cannot grow forever
