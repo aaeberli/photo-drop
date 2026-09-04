@@ -51,8 +51,12 @@ select cron.schedule(
   $$
 );
 
--- Nightly: trim the auth attempt log.
-select cron.schedule('photo-drop-prune', '17 3 * * *', $$select prune_auth_attempts();$$);
+-- Nightly: trim the logs that would otherwise grow forever.
+select cron.schedule(
+  'photo-drop-prune',
+  '17 3 * * *',
+  $$select prune_auth_attempts(); select prune_upload_grants();$$
+);
 
 -- Check what is scheduled:
 --   select jobname, schedule, active from cron.job;
