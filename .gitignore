@@ -6,3 +6,12 @@ supabase/.branches/
 supabase/migrations/20260830120100_cron.sql
 node_modules/
 .DS_Store
+
+# make-key.mjs output. These contain plaintext access keys and QR codes of the
+# share links — committing them publishes the credentials the whole design
+# rests on.
+keys.txt
+keys*.txt
+*.qr.png
+guest.png
+owner.png
