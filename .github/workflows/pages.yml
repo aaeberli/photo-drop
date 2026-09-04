@@ -40,6 +40,30 @@ jobs:
           touch web/.nojekyll
           grep functionsUrl web/config.js
 
+      # GitHub Pages serves everything with Cache-Control: max-age=600, so
+      # without this a browser keeps running JS from up to 10 minutes ago and a
+      # deploy looks like it did nothing. Stamping the commit sha onto every
+      # asset URL makes each deploy a distinct URL, fetched immediately.
+      #
+      # The ES module imports inside the JS have to be stamped too, not just the
+      # tags in the HTML — otherwise a fresh collage.js would still pull a
+      # cached auth.js, mixing versions.
+      - name: Cache-bust asset URLs
+        run: |
+          VER="${GITHUB_SHA::8}"
+          sed -i \
+            -e "s|\"app.css\"|\"app.css?v=$VER\"|g" \
+            -e "s|\"config.js\"|\"config.js?v=$VER\"|g" \
+            -e "s|\"upload.js\"|\"upload.js?v=$VER\"|g" \
+            -e "s|\"collage.js\"|\"collage.js?v=$VER\"|g" \
+            web/index.html web/collage.html
+          sed -i \
+            -e "s|\"./auth.js\"|\"./auth.js?v=$VER\"|g" \
+            -e "s|\"./downscale.js\"|\"./downscale.js?v=$VER\"|g" \
+            web/upload.js web/collage.js
+          echo "stamped version $VER:"
+          grep -ho 'v=[0-9a-f]\{8\}' web/*.html web/*.js | sort -u
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
