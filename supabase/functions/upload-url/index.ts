@@ -11,12 +11,26 @@
  * low, undocumented few megabytes and a phone photo would blow through it.
  */
 
-import { fail, json, preflight } from "../_shared/http.ts";
+import { clientIp, fail, json, preflight } from "../_shared/http.ts";
 import { db, DISPLAY_BUCKET, UPLOAD_BUCKET } from "../_shared/db.ts";
 import { requireSession } from "../_shared/session.ts";
 import { numEnv } from "../_shared/env.ts";
 
+/**
+ * Advisory only. The client supplies `sizeBytes` and can lie about it, and a
+ * signed upload URL carries no size constraint — so the real ceiling is the
+ * bucket's `file_size_limit`, set to match this in 07_upload_grants.sql. This
+ * check exists to fail fast with a readable message, not to enforce anything.
+ */
 const MAX_BYTES = numEnv("MAX_UPLOAD_BYTES", 25 * 1024 * 1024);
+
+/**
+ * Per-key ceiling on issued upload URLs per hour. Generous for a real event —
+ * a guest posting 60 photos in an hour is unusual but fine — while stopping a
+ * script from looping the endpoint to fill the bucket or burn the edge
+ * invocation quota.
+ */
+const MAX_GRANTS_PER_HOUR = numEnv("MAX_GRANTS_PER_HOUR", 120);
 
 /**
  * Refuse new uploads past this much stored display data. The free tier caps
@@ -72,13 +86,31 @@ Deno.serve(async (req) => {
 
   const supabase = db();
 
+  // Rate limit before doing any work, so a loop is cheap to refuse.
+  const { data: recent, error: rateError } = await supabase
+    .rpc("recent_grant_count", { p_key_id: auth.session.keyId, window_minutes: 60 });
+  if (rateError) {
+    console.error("recent_grant_count failed", rateError);
+    // Fail closed: this guard is the only bound on staging-bucket growth.
+    return fail(req, 503, "Busy, try again in a moment.");
+  }
+  if (Number(recent ?? 0) >= MAX_GRANTS_PER_HOUR) {
+    console.warn(`grant rate limit hit for key ${auth.session.keyId}: ${recent}`);
+    return fail(req, 429, "Too many uploads from this link. Try again later.");
+  }
+
   const { data: usage, error: usageError } = await supabase.rpc("storage_usage").single();
   if (usageError) {
     console.error("storage_usage failed", usageError);
     // Do not block uploads on a bookkeeping failure.
-  } else if (Number(usage?.display_bytes ?? 0) >= DISPLAY_BUDGET_BYTES) {
-    console.error(`display budget reached: ${usage?.display_bytes} bytes`);
-    return fail(req, 507, "The album is full. Ask the organiser to make room.");
+  } else {
+    // Count originals still in transit, not just committed display copies —
+    // they occupy the same 1 GB.
+    const used = Number(usage?.display_bytes ?? 0) + Number(usage?.staged_bytes ?? 0);
+    if (used >= DISPLAY_BUDGET_BYTES) {
+      console.error(`storage budget reached: ${used} bytes`);
+      return fail(req, 507, "The album is full. Ask the organiser to make room.");
+    }
   }
 
   // Paths are server-generated and share one id, so the two halves of an upload
@@ -95,6 +127,20 @@ Deno.serve(async (req) => {
   if (displayType) {
     display = await sign(supabase, DISPLAY_BUCKET, `${prefix}/${id}.${DISPLAY_EXTENSION[displayType]}`);
     if (!display) return fail(req, 500, "could not prepare upload");
+  }
+
+  // Record what was handed out. This is what makes the orphan sweep exact: an
+  // uncommitted grant past its grace period is definitively abandoned bytes,
+  // not a stray object of unknown purpose.
+  const { error: grantError } = await supabase.from("upload_grants").insert({
+    key_id: auth.session.keyId,
+    original_path: original.path,
+    display_path: display?.path ?? null,
+    ip: clientIp(req),
+  });
+  if (grantError) {
+    console.error("upload_grants insert failed", grantError);
+    return fail(req, 503, "Could not start the upload. Try again.");
   }
 
   return json(req, { original, display });

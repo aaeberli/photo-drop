@@ -37,8 +37,17 @@ jobs:
             exit 1
           fi
           sed -i "s|https://YOUR_PROJECT_REF.supabase.co/functions/v1|$FUNCTIONS_URL|" web/config.js
+
+          # Narrow the CSP from https://*.supabase.co to this project only. The
+          # wildcard would let any Supabase project be a connect/img target, so
+          # if script injection ever happened, exfiltration to an attacker's
+          # project would be permitted by policy.
+          ORIGIN="${FUNCTIONS_URL%/functions/v1}"
+          sed -i "s|https://\*\.supabase\.co|$ORIGIN|g" web/index.html web/collage.html
+
           touch web/.nojekyll
           grep functionsUrl web/config.js
+          grep -h -o "connect-src [^;]*" web/index.html web/collage.html
 
       # GitHub Pages serves everything with Cache-Control: max-age=600, so
       # without this a browser keeps running JS from up to 10 minutes ago and a

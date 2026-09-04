@@ -10,6 +10,7 @@ create extension if not exists pg_net;
 
 -- Drop first so re-running this file is safe.
 select cron.unschedule('photo-drop-sync')  where exists (select 1 from cron.job where jobname = 'photo-drop-sync');
+select cron.unschedule('photo-drop-sweep') where exists (select 1 from cron.job where jobname = 'photo-drop-sweep');
 select cron.unschedule('photo-drop-prune') where exists (select 1 from cron.job where jobname = 'photo-drop-prune');
 
 -- Every minute: push anything queued into the Google Photos album. /commit also
@@ -21,6 +22,25 @@ select cron.schedule(
   $$
   select net.http_post(
     url     := 'https://__PROJECT_REF__.supabase.co/functions/v1/sync-to-google',
+    headers := jsonb_build_object(
+                 'content-type',   'application/json',
+                 'x-cron-secret',  '__CRON_SECRET__'
+               ),
+    body    := '{}'::jsonb,
+    timeout_milliseconds := 55000
+  );
+  $$
+);
+
+-- Every 15 minutes: delete bytes that were uploaded but never committed.
+-- Without this, anyone with the guest link can fill the storage quota with
+-- files that no `photos` row ever references, invisible to the budget guard.
+select cron.schedule(
+  'photo-drop-sweep',
+  '*/15 * * * *',
+  $$
+  select net.http_post(
+    url     := 'https://__PROJECT_REF__.supabase.co/functions/v1/sweep-orphans',
     headers := jsonb_build_object(
                  'content-type',   'application/json',
                  'x-cron-secret',  '__CRON_SECRET__'

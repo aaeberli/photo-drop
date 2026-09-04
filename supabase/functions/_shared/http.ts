@@ -44,11 +44,30 @@ export function fail(req: Request, status: number, message: string, extra: Recor
   return json(req, { error: message, ...extra }, status);
 }
 
-/** Best-effort client IP, used only for rate limiting and audit. */
+/**
+ * Client IP, for rate limiting and audit.
+ *
+ * `cf-connecting-ip` first: Supabase fronts these functions with Cloudflare,
+ * which sets that header itself and strips any the client sent, so it cannot
+ * be forged.
+ *
+ * Falling back to X-Forwarded-For, take the RIGHTMOST entry, not the leftmost.
+ * The header is a chain where each proxy appends; the leftmost value is
+ * whatever the client claimed, so trusting it — as this used to — let anyone
+ * defeat the rate limit by sending a different fake value each request, and
+ * flood `auth_attempts` with fiction. The rightmost entry is the one the
+ * nearest trusted proxy wrote.
+ */
 export function clientIp(req: Request): string {
+  const direct = req.headers.get("cf-connecting-ip");
+  if (direct) return direct.trim();
+
   const fwd = req.headers.get("x-forwarded-for");
-  if (fwd) return fwd.split(",")[0].trim();
-  return req.headers.get("cf-connecting-ip") ?? "unknown";
+  if (fwd) {
+    const hops = fwd.split(",").map((s) => s.trim()).filter(Boolean);
+    if (hops.length > 0) return hops[hops.length - 1];
+  }
+  return "unknown";
 }
 
 /** Timing-safe string compare, for secrets we cannot look up by index. */

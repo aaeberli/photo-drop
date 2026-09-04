@@ -2,6 +2,11 @@
 --
 -- Run 01_tables.sql first — claim_pending_photos returns `setof photos`, so the
 -- photos table has to exist. Safe to re-run.
+--
+-- Then run 05_lock_functions.sql. These are SECURITY DEFINER and live in
+-- `public`, which Supabase exposes over PostgREST, so until their grants are
+-- revoked from anon and authenticated they are callable by anyone holding the
+-- project's anon key — which makes RLS on these tables decorative.
 
 -- Atomically claim a batch of photos for mirroring to Google.
 -- `for update skip locked` means two concurrent sync runs (the fire-and-forget

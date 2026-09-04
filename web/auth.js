@@ -25,6 +25,27 @@
 
 const CFG = window.PHOTO_DROP_CONFIG;
 
+/*
+ * Refuse to run inside a frame.
+ *
+ * The proper control is `X-Frame-Options` or CSP `frame-ancestors`, but neither
+ * is available here: GitHub Pages does not let you set response headers, and
+ * `frame-ancestors` is ignored when delivered in a <meta> element — the browser
+ * says so in the console. So this is the only lever left.
+ *
+ * The risk it addresses is modest: a framed page runs on its own origin, so an
+ * attacker cannot read the stored key cross-origin, and the worst clickjack is
+ * nudging someone toward a file picker they still have to use. Cheap enough to
+ * close anyway.
+ */
+if (self !== top) {
+  try {
+    top.location = self.location;
+  } catch {
+    document.documentElement.textContent = "This page cannot be displayed in a frame.";
+  }
+}
+
 export class AuthError extends Error {}
 
 export function createAuth(realm) {

@@ -13,9 +13,11 @@
 import { clientIp, fail, json, preflight } from "../_shared/http.ts";
 import { db, DISPLAY_BUCKET, UPLOAD_BUCKET } from "../_shared/db.ts";
 import { requireSession } from "../_shared/session.ts";
+import { numEnv } from "../_shared/env.ts";
 
 const PATH_RE = /^\d{4}\/\d{2}\/[0-9a-f-]{36}\.[a-z]{3,4}$/;
 const DISPLAY_MIMES = new Set(["image/webp", "image/jpeg"]);
+const MAX_BYTES = numEnv("MAX_UPLOAD_BYTES", 25 * 1024 * 1024);
 
 Deno.serve(async (req) => {
   const pre = preflight(req);
@@ -56,6 +58,16 @@ Deno.serve(async (req) => {
   const original = await statObject(supabase, UPLOAD_BUCKET, originalPath);
   if (original === "error") return fail(req, 500, "internal error");
   if (!original) return fail(req, 409, "upload not found — retry the upload");
+
+  // The size checked at /upload-url was client-declared. This is the first
+  // point where the real figure is known, so reject and reclaim the space
+  // rather than accepting whatever arrived.
+  if (original.size !== null && original.size > MAX_BYTES) {
+    console.warn(`oversize original ${originalPath}: ${original.size} bytes`);
+    await supabase.storage.from(UPLOAD_BUCKET).remove([originalPath]);
+    if (displayPath) await supabase.storage.from(DISPLAY_BUCKET).remove([displayPath]);
+    return fail(req, 413, `That photo is too large (max ${Math.floor(MAX_BYTES / 1024 / 1024)} MB).`);
+  }
 
   let display: Awaited<ReturnType<typeof statObject>> = null;
   if (displayPath) {
@@ -101,6 +113,17 @@ Deno.serve(async (req) => {
     // The browser could not decode the file (a HEIC it has no decoder for, say).
     // The original still reaches the album; it just cannot join the collage.
     console.warn(`photo ${data.id} has no display copy and will not appear in the collage`);
+  }
+
+  // Mark the grant used, so the orphan sweep leaves these bytes alone.
+  const { error: grantError } = await supabase
+    .from("upload_grants")
+    .update({ committed: true })
+    .eq("original_path", originalPath);
+  if (grantError) {
+    // Not fatal: the sweeper re-checks `photos` before deleting anything, so a
+    // missed flag costs a wasted lookup rather than deleting a live photo.
+    console.warn(`could not mark grant committed for ${originalPath}`, grantError.message);
   }
 
   // Nudge the sync worker so originals land in the album in seconds rather than

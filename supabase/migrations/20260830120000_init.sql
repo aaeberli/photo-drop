@@ -152,10 +152,14 @@ insert into sync_state (id) values (1) on conflict (id) do nothing;
 -- ---------------------------------------------------------------------------
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values
-  ('uploads', 'uploads', false, 52428800,
+  -- These limits are the ONLY server-side enforcement of upload size. The
+  -- `sizeBytes` checked in upload-url is client-declared and a signed upload
+  -- URL carries no size constraint, so Storage is the only layer that sees the
+  -- real payload. 26214400 = 25 MB, matching MAX_UPLOAD_BYTES.
+  ('uploads', 'uploads', false, 26214400,
    array['image/jpeg', 'image/png', 'image/webp', 'image/avif',
          'image/heic', 'image/heif', 'image/gif']),
-  ('display', 'display', false, 10485760, array['image/webp', 'image/jpeg'])
+  ('display', 'display', false, 4194304, array['image/webp', 'image/jpeg'])
 on conflict (id) do update
   set file_size_limit    = excluded.file_size_limit,
       allowed_mime_types = excluded.allowed_mime_types;
@@ -175,6 +179,13 @@ security definer
 set search_path = public
 as $$
 begin
+  -- SECURITY DEFINER bypasses RLS, and `public` is exposed over PostgREST, so
+  -- without this anyone with the anon key could call this and mutate `photos`.
+  -- Grants are revoked below too; this check does not depend on them.
+  if current_user not in ('service_role', 'postgres') then
+    raise exception 'permission denied for claim_pending_photos' using errcode = '42501';
+  end if;
+
   return query
   update photos p
      set status     = 'syncing',
@@ -233,9 +244,121 @@ $$;
 -- Housekeeping: drop old auth attempts so the table cannot grow forever
 -- ---------------------------------------------------------------------------
 create or replace function prune_auth_attempts() returns void
-language sql
+language plpgsql
 security definer
 set search_path = public
 as $$
+begin
+  if current_user not in ('service_role', 'postgres') then
+    raise exception 'permission denied for prune_auth_attempts' using errcode = '42501';
+  end if;
+
   delete from auth_attempts where at < now() - interval '7 days';
+end;
 $$;
+
+-- ---------------------------------------------------------------------------
+-- Lock the SECURITY DEFINER functions down.
+--
+-- Supabase ships `alter default privileges in schema public grant all on
+-- functions to postgres, anon, authenticated, service_role`, so anon and
+-- authenticated hold *direct* EXECUTE grants on everything created here. They
+-- do not inherit from PUBLIC, so revoking PUBLIC alone changes nothing — they
+-- have to be named.
+--
+-- Without this, RLS on these tables is decorative: `public` is exposed over
+-- PostgREST, so /rest/v1/rpc/<name> with the anon key would run as the owner.
+-- ---------------------------------------------------------------------------
+revoke execute on function claim_pending_photos(int, int) from public, anon, authenticated;
+revoke execute on function storage_usage()                from public, anon, authenticated;
+revoke execute on function prune_auth_attempts()          from public, anon, authenticated;
+
+grant execute on function claim_pending_photos(int, int) to service_role;
+grant execute on function storage_usage()                to service_role;
+grant execute on function prune_auth_attempts()          to service_role;
+create table if not exists upload_grants (
+  id            uuid primary key default gen_random_uuid(),
+  key_id        uuid        references access_keys (id) on delete set null,
+  original_path text        not null unique,
+  display_path  text,
+  ip            text,
+  committed     boolean     not null default false,
+  created_at    timestamptz not null default now()
+);
+
+-- Drives the per-key rate limit.
+create index if not exists upload_grants_key_created_idx
+  on upload_grants (key_id, created_at desc);
+
+-- Drives the orphan sweep: uncommitted grants, oldest first.
+create index if not exists upload_grants_uncommitted_idx
+  on upload_grants (created_at) where not committed;
+
+alter table upload_grants enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- Enforce the size ceiling where the bytes actually arrive.
+--
+-- `upload-url` validated a client-supplied `sizeBytes`, which a client can
+-- simply lie about — the signed URL carries no size constraint. Storage is the
+-- only layer that sees the real payload, so the limit belongs here.
+--
+-- 26214400 = 25 MB, matching MAX_UPLOAD_BYTES.
+-- 4194304  = 4 MB, generous for a 1920px WebP that normally lands under 400 KB.
+-- ---------------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------------
+-- Uncommitted grants past their grace period, for the sweeper.
+-- ---------------------------------------------------------------------------
+create or replace function orphaned_grants(grace_minutes int default 60, batch_size int default 200)
+returns setof upload_grants
+language plpgsql
+security definer
+set search_path = public
+as $orphans$
+begin
+  if current_user not in ('service_role', 'postgres') then
+    raise exception 'permission denied for orphaned_grants' using errcode = '42501';
+  end if;
+
+  return query
+  select *
+    from upload_grants
+   where not committed
+     and created_at < now() - make_interval(mins => grace_minutes)
+   order by created_at
+   limit batch_size;
+end;
+$orphans$;
+
+-- ---------------------------------------------------------------------------
+-- Count recent grants for one key, for the rate limit.
+-- ---------------------------------------------------------------------------
+create or replace function recent_grant_count(p_key_id uuid, window_minutes int default 60)
+returns bigint
+language plpgsql
+security definer
+set search_path = public
+as $grants$
+declare
+  n bigint;
+begin
+  if current_user not in ('service_role', 'postgres') then
+    raise exception 'permission denied for recent_grant_count' using errcode = '42501';
+  end if;
+
+  select count(*) into n
+    from upload_grants
+   where key_id = p_key_id
+     and created_at > now() - make_interval(mins => window_minutes);
+
+  return n;
+end;
+$grants$;
+
+-- `create or replace function` resets privileges to the schema defaults, which
+-- on Supabase hands EXECUTE back to anon and authenticated. Always re-apply.
+revoke execute on function orphaned_grants(int, int) from public, anon, authenticated;
+revoke execute on function recent_grant_count(uuid, int) from public, anon, authenticated;
+grant execute on function orphaned_grants(int, int) to service_role;
+grant execute on function recent_grant_count(uuid, int) to service_role;
