@@ -8,6 +8,10 @@ supabase/migrations/20260830120100_cron.sql
 # substitute the secret into it in place — copy it to a *.local.sql first.
 *.local.sql
 *.filled.sql
+# Any local scratch file, whatever the extension. `*.local.sql` alone missed
+# `cron-secret.local.txt`, which is the same mistake one suffix over.
+*.local.*
+*.local
 node_modules/
 .DS_Store
 

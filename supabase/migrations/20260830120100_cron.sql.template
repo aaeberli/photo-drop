@@ -28,10 +28,10 @@ select cron.schedule(
   '* * * * *',
   $$
   select net.http_post(
-    url     := 'https://dqpxdrvjomtxpdmbrlxi.supabase.co/functions/v1/sync-to-google',
+    url     := 'https://__PROJECT_REF__.supabase.co/functions/v1/sync-to-google',
     headers := jsonb_build_object(
                  'content-type',   'application/json',
-                 'x-cron-secret',  'W8c3kqhPZ5SW+09Y1P8dj7oupynN6oWx1ddRMh3xgLM='
+                 'x-cron-secret',  '__CRON_SECRET__'
                ),
     body    := '{}'::jsonb,
     timeout_milliseconds := 55000
@@ -47,10 +47,10 @@ select cron.schedule(
   '*/15 * * * *',
   $$
   select net.http_post(
-    url     := 'https://dqpxdrvjomtxpdmbrlxi.supabase.co/functions/v1/sweep-orphans',
+    url     := 'https://__PROJECT_REF__.supabase.co/functions/v1/sweep-orphans',
     headers := jsonb_build_object(
                  'content-type',   'application/json',
-                 'x-cron-secret',  'W8c3kqhPZ5SW+09Y1P8dj7oupynN6oWx1ddRMh3xgLM='
+                 'x-cron-secret',  '__CRON_SECRET__'
                ),
     body    := '{}'::jsonb,
     timeout_milliseconds := 55000
