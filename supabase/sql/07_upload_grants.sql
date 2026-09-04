@@ -39,10 +39,10 @@ alter table upload_grants enable row level security;
 -- simply lie about — the signed URL carries no size constraint. Storage is the
 -- only layer that sees the real payload, so the limit belongs here.
 --
--- 26214400 = 25 MB, matching MAX_UPLOAD_BYTES.
+-- 52428800 = 50 MB, matching MAX_UPLOAD_BYTES: ProRAW is 25-75 MB.
 -- 4194304  = 4 MB, generous for a 1920px WebP that normally lands under 400 KB.
 -- ---------------------------------------------------------------------------
-update storage.buckets set file_size_limit = 26214400 where id = 'uploads';
+update storage.buckets set file_size_limit = 52428800 where id = 'uploads';
 update storage.buckets set file_size_limit = 4194304  where id = 'display';
 
 -- ---------------------------------------------------------------------------

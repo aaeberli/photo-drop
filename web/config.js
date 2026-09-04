@@ -27,4 +27,15 @@ window.PHOTO_DROP_CONFIG = {
   // about 2.5x the storage. Anything above 2560 buys nothing on any screen.
   displayMaxEdge: 1920,
   displayQuality: 0.8,
+
+  // Largest original accepted. Must match MAX_UPLOAD_BYTES in the edge
+  // function secrets AND the `uploads` bucket's file_size_limit — the bucket
+  // is the only one of the three that actually enforces anything, since this
+  // value and the server's are both advisory (a signed upload URL carries no
+  // size constraint).
+  //
+  // 50 MB, not 25: iPhone ProRAW runs 25-75 MB, high-megapixel Android JPEGs
+  // reach 30 MB, and panoramas 40 MB. Originals are transient — deleted once
+  // mirrored to Google Photos — so a generous cap costs little lasting space.
+  maxUploadBytes: 50 * 1024 * 1024,
 };

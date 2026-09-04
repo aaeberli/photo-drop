@@ -39,7 +39,9 @@
     <input id="cameraInput"  type="file" accept="image/*" capture="environment" tabindex="-1" aria-hidden="true">
     <input id="libraryInput" type="file" accept="image/*" multiple tabindex="-1" aria-hidden="true">
 
-    <p class="hint">JPEG, PNG, HEIC or WebP · up to 25&nbsp;MB each</p>
+    <!-- Size filled in by upload.js from config, so the number shown can never
+         disagree with the number enforced. -->
+    <p class="hint" id="sizeHint">JPEG, PNG, HEIC or WebP</p>
     <p class="hint" id="cameraFallback" hidden>
       Camera not available on this browser — use “Choose from library”, which
       usually offers the camera too.

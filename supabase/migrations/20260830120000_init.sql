@@ -155,8 +155,8 @@ values
   -- These limits are the ONLY server-side enforcement of upload size. The
   -- `sizeBytes` checked in upload-url is client-declared and a signed upload
   -- URL carries no size constraint, so Storage is the only layer that sees the
-  -- real payload. 26214400 = 25 MB, matching MAX_UPLOAD_BYTES.
-  ('uploads', 'uploads', false, 26214400,
+  -- real payload. 52428800 = 50 MB, matching MAX_UPLOAD_BYTES. Sized for ProRAW and panoramas.
+  ('uploads', 'uploads', false, 52428800,
    array['image/jpeg', 'image/png', 'image/webp', 'image/avif',
          'image/heic', 'image/heif', 'image/gif']),
   ('display', 'display', false, 4194304, array['image/webp', 'image/jpeg'])
@@ -313,7 +313,7 @@ alter table upload_grants enable row level security;
 -- simply lie about — the signed URL carries no size constraint. Storage is the
 -- only layer that sees the real payload, so the limit belongs here.
 --
--- 26214400 = 25 MB, matching MAX_UPLOAD_BYTES.
+-- 52428800 = 50 MB, matching MAX_UPLOAD_BYTES. Sized for ProRAW and panoramas.
 -- 4194304  = 4 MB, generous for a 1920px WebP that normally lands under 400 KB.
 -- ---------------------------------------------------------------------------
 

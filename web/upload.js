@@ -15,9 +15,10 @@ const els = {
   cameraBtn: document.getElementById("cameraBtn"),
   libraryBtn: document.getElementById("libraryBtn"),
   cameraFallback: document.getElementById("cameraFallback"),
+  sizeHint: document.getElementById("sizeHint"),
 };
 
-const MAX_BYTES = 25 * 1024 * 1024;
+const MAX_BYTES = CFG.maxUploadBytes ?? 50 * 1024 * 1024;
 const CONCURRENCY = 2;
 
 // HEIC/HEIF cannot be previewed in most browsers, so those rows get a glyph
@@ -28,6 +29,9 @@ function show(state) {
   for (const el of [els.locked, els.ready]) el.removeAttribute("data-active");
   state.setAttribute("data-active", "");
 }
+
+els.sizeHint.textContent =
+  `JPEG, PNG, HEIC or WebP · up to ${Math.floor(MAX_BYTES / 1024 / 1024)} MB each`;
 
 // --- boot -------------------------------------------------------------------
 

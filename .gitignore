@@ -4,6 +4,10 @@
 supabase/.temp/
 supabase/.branches/
 supabase/migrations/20260830120100_cron.sql
+# Filled-in copies of any template. The cron template is TRACKED, so never
+# substitute the secret into it in place — copy it to a *.local.sql first.
+*.local.sql
+*.filled.sql
 node_modules/
 .DS_Store
 

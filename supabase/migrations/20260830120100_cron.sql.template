@@ -1,6 +1,13 @@
--- Cron jobs. NOT applied automatically: it contains your project ref and cron
--- secret, so copy it, fill in the two placeholders, and run it once in the
--- Supabase SQL editor. Do not commit the filled-in version.
+-- Cron jobs. NOT applied automatically.
+--
+-- ⚠ THIS FILE IS TRACKED IN GIT. Do not substitute the secret in place — copy
+-- it first, and edit the copy:
+--
+--     cp supabase/migrations/20260830120100_cron.sql.template cron.local.sql
+--
+-- `*.local.sql` is gitignored. Filling this file in and committing would
+-- publish your CRON_SECRET, which lets anyone trigger sync-to-google and
+-- sweep-orphans — and sweep-orphans deletes files.
 --
 --   __PROJECT_REF__  e.g. abcdefghijklmnopqrst
 --   __CRON_SECRET__  the same value you set with `supabase secrets set CRON_SECRET=...`
@@ -21,10 +28,10 @@ select cron.schedule(
   '* * * * *',
   $$
   select net.http_post(
-    url     := 'https://__PROJECT_REF__.supabase.co/functions/v1/sync-to-google',
+    url     := 'https://dqpxdrvjomtxpdmbrlxi.supabase.co/functions/v1/sync-to-google',
     headers := jsonb_build_object(
                  'content-type',   'application/json',
-                 'x-cron-secret',  '__CRON_SECRET__'
+                 'x-cron-secret',  'W8c3kqhPZ5SW+09Y1P8dj7oupynN6oWx1ddRMh3xgLM='
                ),
     body    := '{}'::jsonb,
     timeout_milliseconds := 55000
@@ -40,10 +47,10 @@ select cron.schedule(
   '*/15 * * * *',
   $$
   select net.http_post(
-    url     := 'https://__PROJECT_REF__.supabase.co/functions/v1/sweep-orphans',
+    url     := 'https://dqpxdrvjomtxpdmbrlxi.supabase.co/functions/v1/sweep-orphans',
     headers := jsonb_build_object(
                  'content-type',   'application/json',
-                 'x-cron-secret',  '__CRON_SECRET__'
+                 'x-cron-secret',  'W8c3kqhPZ5SW+09Y1P8dj7oupynN6oWx1ddRMh3xgLM='
                ),
     body    := '{}'::jsonb,
     timeout_milliseconds := 55000
