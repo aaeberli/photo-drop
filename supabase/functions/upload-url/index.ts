@@ -25,12 +25,20 @@ import { numEnv } from "../_shared/env.ts";
 const MAX_BYTES = numEnv("MAX_UPLOAD_BYTES", 25 * 1024 * 1024);
 
 /**
- * Per-key ceiling on issued upload URLs per hour. Generous for a real event —
- * a guest posting 60 photos in an hour is unusual but fine — while stopping a
- * script from looping the endpoint to fill the bucket or burn the edge
- * invocation quota.
+ * Upload ceilings per hour.
+ *
+ * Per-IP is the meaningful one: the guest link is a single key shared by
+ * everybody, so a per-key cap is a cap on the whole party — thirty guests with
+ * five photos each would trip a low key limit and start refusing legitimate
+ * uploads. The abuse worth bounding is one client looping.
+ *
+ * PER_IP is deliberately generous rather than tight, because a venue behind
+ * one NAT looks like a single uploader. PER_KEY is a loose backstop for a
+ * distributed attempt; the real ceiling on damage is the storage budget plus
+ * the orphan sweeper.
  */
-const MAX_GRANTS_PER_HOUR = numEnv("MAX_GRANTS_PER_HOUR", 120);
+const MAX_GRANTS_PER_IP = numEnv("MAX_GRANTS_PER_IP", 200);
+const MAX_GRANTS_PER_KEY = numEnv("MAX_GRANTS_PER_KEY", 2000);
 
 /**
  * Refuse new uploads past this much stored display data. The free tier caps
@@ -87,16 +95,24 @@ Deno.serve(async (req) => {
   const supabase = db();
 
   // Rate limit before doing any work, so a loop is cheap to refuse.
-  const { data: recent, error: rateError } = await supabase
-    .rpc("recent_grant_count", { p_key_id: auth.session.keyId, window_minutes: 60 });
+  const ip = clientIp(req);
+  const { data: rate, error: rateError } = await supabase
+    .rpc("grant_rate", { p_key_id: auth.session.keyId, p_ip: ip, window_minutes: 60 })
+    .single();
   if (rateError) {
-    console.error("recent_grant_count failed", rateError);
+    console.error("grant_rate failed", rateError);
     // Fail closed: this guard is the only bound on staging-bucket growth.
+    // NOTE: this is why 08_grant_rate_by_ip.sql must be applied BEFORE
+    // deploying this function — otherwise every upload returns 503.
     return fail(req, 503, "Busy, try again in a moment.");
   }
-  if (Number(recent ?? 0) >= MAX_GRANTS_PER_HOUR) {
-    console.warn(`grant rate limit hit for key ${auth.session.keyId}: ${recent}`);
-    return fail(req, 429, "Too many uploads from this link. Try again later.");
+  if (Number(rate?.by_ip ?? 0) >= MAX_GRANTS_PER_IP) {
+    console.warn(`per-ip grant limit hit: ${ip} at ${rate?.by_ip}`);
+    return fail(req, 429, "Too many uploads from this device. Try again later.");
+  }
+  if (Number(rate?.by_key ?? 0) >= MAX_GRANTS_PER_KEY) {
+    console.warn(`per-key grant limit hit: ${auth.session.keyId} at ${rate?.by_key}`);
+    return fail(req, 429, "This link has hit its upload limit. Ask the organiser.");
   }
 
   const { data: usage, error: usageError } = await supabase.rpc("storage_usage").single();
@@ -136,7 +152,7 @@ Deno.serve(async (req) => {
     key_id: auth.session.keyId,
     original_path: original.path,
     display_path: display?.path ?? null,
-    ip: clientIp(req),
+    ip,
   });
   if (grantError) {
     console.error("upload_grants insert failed", grantError);

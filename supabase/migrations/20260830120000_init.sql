@@ -332,33 +332,53 @@ end;
 $orphans$;
 
 -- ---------------------------------------------------------------------------
--- Count recent grants for one key, for the rate limit.
+-- Recent grant counts for the rate limit.
+--
+-- Both per-key and per-IP, because the guest link is ONE key shared by
+-- everybody: a per-key cap is a cap on the whole party. The per-IP figure is
+-- what actually bounds one client looping the endpoint.
 -- ---------------------------------------------------------------------------
-create or replace function recent_grant_count(p_key_id uuid, window_minutes int default 60)
-returns bigint
+create or replace function grant_rate(p_key_id uuid, p_ip text, window_minutes int default 60)
+returns table (by_key bigint, by_ip bigint)
 language plpgsql
 security definer
 set search_path = public
-as $grants$
-declare
-  n bigint;
+as $rate$
 begin
   if current_user not in ('service_role', 'postgres') then
-    raise exception 'permission denied for recent_grant_count' using errcode = '42501';
+    raise exception 'permission denied for grant_rate' using errcode = '42501';
   end if;
 
-  select count(*) into n
-    from upload_grants
-   where key_id = p_key_id
-     and created_at > now() - make_interval(mins => window_minutes);
-
-  return n;
+  return query
+  select
+    count(*) filter (where key_id = p_key_id),
+    count(*) filter (where ip = p_ip)
+  from upload_grants
+  where created_at > now() - make_interval(mins => window_minutes);
 end;
-$grants$;
+$rate$;
+
+-- Keep upload_grants from growing forever.
+create or replace function prune_upload_grants() returns void
+language plpgsql
+security definer
+set search_path = public
+as $prunegrants$
+begin
+  if current_user not in ('service_role', 'postgres') then
+    raise exception 'permission denied for prune_upload_grants' using errcode = '42501';
+  end if;
+
+  delete from upload_grants
+   where committed and created_at < now() - interval '7 days';
+end;
+$prunegrants$;
 
 -- `create or replace function` resets privileges to the schema defaults, which
 -- on Supabase hands EXECUTE back to anon and authenticated. Always re-apply.
 revoke execute on function orphaned_grants(int, int) from public, anon, authenticated;
-revoke execute on function recent_grant_count(uuid, int) from public, anon, authenticated;
+revoke execute on function grant_rate(uuid, text, int) from public, anon, authenticated;
+revoke execute on function prune_upload_grants() from public, anon, authenticated;
 grant execute on function orphaned_grants(int, int) to service_role;
-grant execute on function recent_grant_count(uuid, int) to service_role;
+grant execute on function grant_rate(uuid, text, int) to service_role;
+grant execute on function prune_upload_grants() to service_role;

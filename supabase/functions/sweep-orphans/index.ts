@@ -21,7 +21,18 @@ import { numEnv, requireEnv } from "../_shared/env.ts";
 
 /** How long an upload may sit uncommitted before it is considered abandoned. */
 const GRACE_MINUTES = numEnv("ORPHAN_GRACE_MINUTES", 60);
-const BATCH_SIZE = numEnv("ORPHAN_BATCH_SIZE", 200);
+
+/**
+ * Hard-clamped, and the clamp is load-bearing.
+ *
+ * This function decides "delete unless the path appears in `photos`". That is
+ * only safe while the lookup below cannot be truncated — if the batch exceeded
+ * PostgREST's row cap, the `live` set would come back incomplete and live
+ * photos would be deleted as orphans. 200 is far below any configured cap, and
+ * the sweep runs every 15 minutes, so a backlog drains quickly. Do not raise
+ * this without also paginating the `photos` lookup.
+ */
+const BATCH_SIZE = Math.min(numEnv("ORPHAN_BATCH_SIZE", 200), 200);
 
 interface Grant {
   id: string;
