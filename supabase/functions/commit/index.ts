@@ -12,7 +12,7 @@
 
 import { clientIp, fail, json, preflight } from "../_shared/http.ts";
 import { db, DISPLAY_BUCKET, UPLOAD_BUCKET } from "../_shared/db.ts";
-import { hasScope, readSession } from "../_shared/session.ts";
+import { requireSession } from "../_shared/session.ts";
 
 const PATH_RE = /^\d{4}\/\d{2}\/[0-9a-f-]{36}\.[a-z]{3,4}$/;
 const DISPLAY_MIMES = new Set(["image/webp", "image/jpeg"]);
@@ -22,8 +22,8 @@ Deno.serve(async (req) => {
   if (pre) return pre;
   if (req.method !== "POST") return fail(req, 405, "method not allowed");
 
-  const session = await readSession(req);
-  if (!hasScope(session, "upload")) return fail(req, 401, "not authorised to upload");
+  const auth = await requireSession(req, "upload");
+  if (!auth.ok) return fail(req, auth.status, auth.error);
 
   let body: {
     originalPath?: string;
@@ -83,7 +83,7 @@ Deno.serve(async (req) => {
       caption: (body.caption ?? "").slice(0, 500) || null,
       // Which share link this came in on, so revoking a key can be traced to
       // the photos it let in.
-      uploaded_by_key: session.keyId,
+      uploaded_by_key: auth.session.keyId,
       uploader_ip: clientIp(req),
       status: "pending",
     })

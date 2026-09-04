@@ -12,6 +12,7 @@
 
 import { SignJWT, jwtVerify } from "npm:jose@5.9.6";
 import { numEnv, requireEnv } from "./env.ts";
+import { db } from "./db.ts";
 
 const SECRET = new TextEncoder().encode(requireEnv("SESSION_JWT_SECRET"));
 const ISSUER = "photo-drop";
@@ -58,12 +59,57 @@ export async function readSession(req: Request): Promise<Session | null> {
   }
 }
 
+export type AuthResult =
+  | { ok: true; session: Session }
+  | { ok: false; status: number; error: string };
+
 /**
- * Type predicate, so callers get a non-null `session` after the guard and can
- * reach `keyId` without an assertion.
+ * The authorisation check for every endpoint except /auth.
+ *
+ * Verifying the JWT alone is not enough. A session token stays
+ * cryptographically valid until it expires — SESSION_TTL_SECONDS, 12 hours by
+ * default — so setting `revoked = true` on a key would stop it minting *new*
+ * sessions while leaving anyone already holding one with a working credential
+ * for the rest of the day. "Revoke" has to mean revoke.
+ *
+ * So the key is re-read on every request. That costs one indexed primary-key
+ * lookup, which at this traffic level is nothing: the collage polls once a
+ * minute per screen. In exchange, revoking a link takes effect on its next
+ * request rather than up to twelve hours later.
  */
-export function hasScope(session: Session | null, scope: Scope): session is Session {
-  return !!session && session.scopes.includes(scope);
+export async function requireSession(req: Request, scope: Scope): Promise<AuthResult> {
+  const session = await readSession(req);
+  if (!session) return { ok: false, status: 401, error: "Not signed in." };
+
+  if (!session.scopes.includes(scope)) {
+    // 403, not 401: the token is genuine, it simply does not carry this right,
+    // so the client must not retry the exchange.
+    return { ok: false, status: 403, error: `This link cannot ${scope} photos.` };
+  }
+
+  const { data, error } = await db()
+    .from("access_keys")
+    .select("revoked, expires_at")
+    .eq("id", session.keyId)
+    .maybeSingle();
+
+  if (error) {
+    // Fail closed, but with a status that reads as transient so the client
+    // retries rather than discarding a perfectly good stored key.
+    console.error("access_keys re-check failed", error);
+    return { ok: false, status: 503, error: "Could not verify your link. Try again." };
+  }
+
+  // 401 on each of these is deliberate: the browser retries once against
+  // /auth, that rejection clears the stored key, and the page stops working
+  // cleanly instead of looping.
+  if (!data) return { ok: false, status: 401, error: "That link no longer exists." };
+  if (data.revoked) return { ok: false, status: 401, error: "That link has been revoked." };
+  if (data.expires_at && new Date(data.expires_at).getTime() < Date.now()) {
+    return { ok: false, status: 401, error: "That link has expired." };
+  }
+
+  return { ok: true, session };
 }
 
 /** sha256(key || pepper), hex. The plaintext key is never stored. */

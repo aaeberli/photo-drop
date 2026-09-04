@@ -13,7 +13,7 @@
 
 import { fail, json, preflight } from "../_shared/http.ts";
 import { db, DISPLAY_BUCKET, UPLOAD_BUCKET } from "../_shared/db.ts";
-import { hasScope, readSession } from "../_shared/session.ts";
+import { requireSession } from "../_shared/session.ts";
 import { numEnv } from "../_shared/env.ts";
 
 const MAX_BYTES = numEnv("MAX_UPLOAD_BYTES", 25 * 1024 * 1024);
@@ -45,8 +45,8 @@ Deno.serve(async (req) => {
   if (pre) return pre;
   if (req.method !== "POST") return fail(req, 405, "method not allowed");
 
-  const session = await readSession(req);
-  if (!hasScope(session, "upload")) return fail(req, 401, "not authorised to upload");
+  const auth = await requireSession(req, "upload");
+  if (!auth.ok) return fail(req, auth.status, auth.error);
 
   let body: { contentType?: string; sizeBytes?: number; displayType?: string | null };
   try {

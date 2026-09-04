@@ -14,7 +14,7 @@
 
 import { fail, json, preflight } from "../_shared/http.ts";
 import { db, DISPLAY_BUCKET } from "../_shared/db.ts";
-import { hasScope, readSession } from "../_shared/session.ts";
+import { requireSession } from "../_shared/session.ts";
 import { numEnv } from "../_shared/env.ts";
 
 const URL_TTL_SECONDS = numEnv("DISPLAY_URL_TTL_SECONDS", 7 * 24 * 60 * 60);
@@ -37,8 +37,8 @@ Deno.serve(async (req) => {
   if (pre) return pre;
   if (req.method !== "GET") return fail(req, 405, "method not allowed");
 
-  const session = await readSession(req);
-  if (!hasScope(session, "view")) return fail(req, 401, "not authorised to view");
+  const auth = await requireSession(req, "view");
+  if (!auth.ok) return fail(req, auth.status, auth.error);
 
   const supabase = db();
   const { data, error } = await supabase

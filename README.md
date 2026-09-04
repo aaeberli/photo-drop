@@ -546,9 +546,27 @@ supabase functions deploy auth upload-url commit photos sync-to-google
 update access_keys set revoked = true where label = 'guests';
 ```
 
-Then mint a new one and register it. Live sessions keep working until their JWT
-expires — `SESSION_TTL_SECONDS`, default 12h. Shorten it if you want revocation
-to bite faster. Rotating `SESSION_JWT_SECRET` invalidates sessions immediately.
+**Revocation takes effect on the holder's next request.** Every endpoint except
+`/auth` re-reads `access_keys` per request via `requireSession`, so it does not
+wait out the holder's session token. This costs one indexed lookup per request
+and is the reason "revoke" means revoke: verifying the JWT alone would leave a
+revoked key working for up to `SESSION_TTL_SECONDS` (12h by default), because
+the token stays cryptographically valid until it expires.
+
+Mint a replacement without disturbing the other link:
+
+```bash
+AUTH_KEY_PEPPER=… PAGES_BASE_URL=… ONLY=owner EXPIRES_DAYS=30 node scripts/make-key.mjs
+```
+
+`ONLY` is `guest` or `owner`. `EXPIRES_DAYS` sets `expires_at`; without it a link
+is valid until revoked, which is worth a thought for something forwarded into
+group chats. Expiry is enforced on every request, same path as revocation.
+
+Rotating `SESSION_JWT_SECRET` remains the blunt instrument — it invalidates
+every session everywhere at once. Guests recover transparently, because their
+page re-exchanges the key it still holds in `localStorage`; a revoked key
+cannot.
 
 Photos keep their `uploaded_by_key` link after revocation (`on delete set null`
 only fires on deletion, and you should revoke rather than delete):
@@ -621,6 +639,8 @@ Symptoms in the order they tend to appear.
 | Pages serves README.md | Pages source is "Deploy from a branch", so Jekyll publishes the repo root. | Source → GitHub Actions, then run the workflow |
 | Pages workflow fails at "Inject the functions URL" | `SUPABASE_FUNCTIONS_URL` repository **variable** missing. | Add it under Actions → Variables (variable, not secret) |
 | App loads, then *"Could not reach the server"* | Almost always CORS: `ALLOWED_ORIGINS` does not exactly match the Pages origin. A CORS block is indistinguishable from a network failure in JS. | Set origin only, no path or trailing slash; redeploy the functions |
+| A deploy appears to change nothing | GitHub Pages serves `Cache-Control: max-age=600`, so the browser runs JS up to 10 minutes old without revalidating. | Hard-reload, or add `?v=2` to the page URL. The workflow stamps the commit sha onto asset URLs to prevent this; the HTML itself is still 10-minute cached and Pages cannot be told otherwise |
+| Collage frozen on *"Loading the album…"* | Fixed: `selectPhotos` used to loop forever when the album had fewer photos than the template had tiles, blocking the main thread. | Ensure `web/collage.js` contains `const FEW =` and `let guard =`; if not, you are on a cached or pre-fix copy |
 | Uploads fine, album stays empty | Mirror failing. | `select last_sync_error from sync_state` — `invalid_grant` means re-link Google |
 | Guest sees "The album is full" | `DISPLAY_BUDGET_BYTES` reached. | `select * from storage_usage();` and free space or raise the budget |
 | Everything dead after a quiet week | Free project paused after 7 days idle. | Unpause in the dashboard; check the cron job still exists |

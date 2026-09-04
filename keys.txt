@@ -1,24 +1,26 @@
+$ AUTH_KEY_PEPPER=$(grep '^AUTH_KEY_PEPPER=' .env | cut -d= -f2-) PAGES_BASE_URL='https://aaeberli.github.io/photo-drop' node scripts/make-key.mjs
+
 === Guest link — give this one to everybody ==========================
-https://aaeberli.github.io/photo-drop/#k=WH4CP-XE209-W1D4R-1G2AD
+https://aaeberli.github.io/photo-drop/#k=JEAEE-SB4JX-XK0VQ-V89NZ
 
   Opens straight on the upload buttons, no sign-in step. Upload only:
   it cannot open the collage.
 
 === Owner link — the collage screen, keep this one ===================
-https://aaeberli.github.io/photo-drop/collage.html#k=WD6SX-RTPNN-0RMXV-W70HY
+https://aaeberli.github.io/photo-drop/collage.html#k=ASPEA-84A5J-MRXTY-W78Z8
 
   View only: it cannot upload.
 
 === Register both (Supabase SQL editor) ==============================
 insert into access_keys (label, key_hash, scopes) values
-  ('guests', 'f916e773a789e8ad3e389cd92592e718ce3f2f0e7e335c79a2ed2b011d196e06', array['upload']),
-  ('owner collage', 'd763557c28451b37f7cecc597bbc26bdeb7c23010d8163f009ac276d968791a6', array['view']);
+  ('guests', 'c9c9375e7c4f34ad63717eb2efc2022cbc061250ac2f2df3ec5a2a78a81ef9db', array['upload']),
+  ('owner collage', '6cda07b0fc4cb57129e72de3e1dbdd3a69596f7050024a5319f392cf48b14aaa', array['view']);
 
 === Revoke later ====================================================
-update access_keys set revoked = true where key_hash = 'f916e773a789e8ad3e389cd92592e718ce3f2f0e7e335c79a2ed2b011d196e06';  -- guests
-update access_keys set revoked = true where key_hash = 'd763557c28451b37f7cecc597bbc26bdeb7c23010d8163f009ac276d968791a6';  -- owner
+update access_keys set revoked = true where key_hash = 'c9c9375e7c4f34ad63717eb2efc2022cbc061250ac2f2df3ec5a2a78a81ef9db';  -- guests
+update access_keys set revoked = true where key_hash = '6cda07b0fc4cb57129e72de3e1dbdd3a69596f7050024a5319f392cf48b14aaa';  -- owner
 
 The keys above are not stored anywhere. Copy the links now.
 
 Tip: for handing the guest link round a room, a QR code beats typing:
-  npx --yes qrcode -o guest.png "https://aaeberli.github.io/photo-drop/#k=WH4CP-XE209-W1D4R-1G2AD"
+  npx --yes qrcode -o guest.png "https://aaeberli.github.io/photo-drop/#k=JEAEE-SB4JX-XK0VQ-V89NZ"
